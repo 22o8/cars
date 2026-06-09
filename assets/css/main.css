@@ -630,3 +630,94 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
   .modal-panel { max-height: min(91vh, 91dvh); padding: .85rem; }
   .modal-header { top: -.85rem; margin: -.85rem -.85rem .85rem; padding: .8rem .85rem; }
 }
+
+/* V31: root fix for installment extension modal on desktop and all screens */
+body.modal-open, html.modal-open { overflow: hidden !important; }
+.modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px !important;
+  background: rgba(2, 6, 23, .72) !important;
+  backdrop-filter: blur(10px) !important;
+  overflow: hidden !important;
+}
+.modal-panel {
+  box-sizing: border-box !important;
+  width: min(760px, calc(100vw - 48px)) !important;
+  max-width: min(760px, calc(100vw - 48px)) !important;
+  height: auto !important;
+  max-height: calc(100dvh - 48px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 24px !important;
+  padding: 0 !important;
+  box-shadow: 0 30px 120px rgba(0, 0, 0, .55) !important;
+}
+.modal-header {
+  position: relative !important;
+  top: auto !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  padding: 18px 22px !important;
+  border-radius: 24px 24px 0 0 !important;
+  background: color-mix(in srgb, var(--panel) 96%, transparent) !important;
+}
+.modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding: 20px 22px !important;
+  overscroll-behavior: contain !important;
+}
+.modal-footer {
+  flex: 0 0 auto !important;
+  padding: 16px 22px 20px !important;
+  border-top: 1px solid var(--border) !important;
+  background: color-mix(in srgb, var(--panel) 96%, transparent) !important;
+}
+.modal-footer .btn-primary {
+  width: 100% !important;
+  min-height: 54px !important;
+}
+.extend-installment-modal .input,
+.extend-installment-modal select.input {
+  min-height: 52px !important;
+}
+
+@media (max-width: 768px) {
+  .modal-overlay {
+    align-items: flex-end !important;
+    padding: 10px !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+  }
+  .modal-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 20px - env(safe-area-inset-bottom)) !important;
+    border-radius: 24px 24px 16px 16px !important;
+  }
+  .modal-header {
+    padding: 14px 16px !important;
+    border-radius: 24px 24px 0 0 !important;
+  }
+  .modal-header h3 { font-size: 1.12rem !important; }
+  .modal-body { padding: 16px !important; }
+  .modal-footer { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)) !important; }
+}
+
+@media (min-width: 769px) and (max-height: 720px) {
+  .modal-overlay { padding: 12px !important; }
+  .modal-panel { max-height: calc(100dvh - 24px) !important; }
+  .modal-header { padding: 12px 18px !important; }
+  .modal-body { padding: 14px 18px !important; }
+  .modal-footer { padding: 12px 18px !important; }
+}

@@ -25,11 +25,13 @@
     <div v-if="extendSelected" class="modal-overlay" @click.self="extendSelected=null">
       <div class="modal-panel extend-installment-modal">
         <div class="modal-header"><h3 class="text-2xl font-black">تمديد مدة الدفعات</h3><button class="btn-secondary btn" @click="extendSelected=null">إغلاق</button></div>
-        <div class="grid gap-4">
+        <div class="modal-body grid gap-4">
           <div class="soft-card p-4"><div class="text-muted">سيتم الحفاظ على ترتيب الدفعات وتواريخها، مع تأخير المدة المختارة فقط.</div><b>{{extendSelected.sale.customer.fullName}} - {{extendSelected.sale.car.brand}} {{extendSelected.sale.car.model}}</b></div>
           <div class="grid gap-3 sm:grid-cols-2"><FormField label="تمديد بالأشهر" hint="اختياري"><input v-model.number="extendMonths" type="number" min="0" class="input"></FormField><FormField label="تمديد بالأيام" hint="اختياري"><input v-model.number="extendDays" type="number" min="0" class="input"></FormField></div>
           <FormField label="نطاق التمديد" hint="اختر هل تريد تمديد هذا القسط فقط أو كل الدفعات المتبقية بعده"><select v-model="extendApplyTo" class="input"><option value="remaining">هذا القسط وكل الدفعات المتبقية</option><option value="current">هذا القسط فقط</option></select></FormField>
           <FormField label="سبب التمديد" hint="اختياري، يظهر في سجل العمليات"><input v-model="extendNotes" class="input" placeholder="مثال: طلب العميل تمديد موعد السداد"></FormField>
+        </div>
+        <div class="modal-footer">
           <button class="btn-primary btn" :disabled="busy" @click="submitExtend">حفظ تمديد المدة</button>
         </div>
       </div>
