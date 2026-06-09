@@ -56,6 +56,8 @@ model User {
   permissions Json?
   createdAt DateTime @default(now())
   sales     Sale[]
+  pushSubscriptions PushSubscription[]
+  notificationDeliveries NotificationDelivery[]
 }
 
 model Customer {
@@ -247,4 +249,31 @@ model CustomerDocument {
   notes       String?
   createdAt   DateTime @default(now())
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model NotificationDelivery {
+  id             String   @id @default(cuid())
+  userId         String
+  title          String
+  body           String
+  tag            String
+  installmentId  String?
+  sentAt         DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tag])
 }

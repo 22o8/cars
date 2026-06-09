@@ -53,6 +53,6 @@ export default defineNuxtConfig({
         { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }
       ]
     },
-    workbox: { navigateFallback: '/', globPatterns: ['**/*.{js,css,html,svg,png,ico}'] }
+    workbox: { navigateFallback: '/', globPatterns: ['**/*.{js,css,html,svg,png,ico}'], importScripts: ['/push-handler.js'] }
   }
 })

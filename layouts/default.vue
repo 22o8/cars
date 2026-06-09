@@ -179,8 +179,8 @@ const notificationButtonText = computed(() => {
 })
 
 async function enableNotifications() {
-  if (typeof Notification === 'undefined') {
-    alert('المتصفح لا يدعم إشعارات الويب على هذا الجهاز')
+  if (typeof Notification === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    alert('هذا الجهاز أو المتصفح لا يدعم إشعارات Push الكاملة. جرّب Chrome أو Edge وثبّت التطبيق على الهاتف.')
     notificationStatus.value = 'unsupported'
     return
   }
@@ -191,11 +191,43 @@ async function enableNotifications() {
     notificationStatus.value = 'granted'
   }
   if (notificationStatus.value === 'granted') {
-    if ('serviceWorker' in navigator) await navigator.serviceWorker.ready.catch(() => null)
-    await showSystemNotification('تم تفعيل الإشعارات', 'ستصلك تنبيهات الأقساط المستحقة والمتأخرة أثناء استخدام النظام.')
-    startNotificationPolling(true)
+    const ok = await subscribePushNotifications()
+    if (ok) {
+      await $fetch('/api/push/test', { method: 'POST', credentials: 'include' }).catch(() => null)
+      startNotificationPolling(true)
+      alert('تم تفعيل إشعارات الهاتف بنجاح. ستصلك تنبيهات الأقساط حتى إذا كان البرنامج مغلقاً عند تفعيل Cron في Vercel.')
+    }
   } else if (notificationStatus.value === 'denied') {
     alert('الإشعارات محظورة من المتصفح. فعّلها من إعدادات الموقع حتى تصلك تنبيهات الأقساط.')
+  }
+}
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i)
+  return outputArray
+}
+
+async function subscribePushNotifications() {
+  try {
+    const keyInfo: any = await $fetch('/api/push/public-key', { credentials: 'include' })
+    if (!keyInfo?.configured || !keyInfo?.publicKey) {
+      alert('مفاتيح إشعارات Push غير مضبوطة في Vercel. أضف VAPID_PUBLIC_KEY و VAPID_PRIVATE_KEY و VAPID_SUBJECT حتى تعمل الإشعارات خارج البرنامج.')
+      return false
+    }
+    const reg = await navigator.serviceWorker.ready
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(keyInfo.publicKey) })
+    }
+    await $fetch('/api/push/subscribe', { method: 'POST', body: sub.toJSON(), credentials: 'include' })
+    return true
+  } catch (e) {
+    alert('تعذر تفعيل إشعارات الهاتف. تأكد أن الموقع يعمل على HTTPS وأن التطبيق مثبت أو مسموح له بالإشعارات.')
+    return false
   }
 }
 
