@@ -4,8 +4,8 @@ import { prisma } from '../../utils/db'
 import { signToken, userPermissions } from '../../utils/auth'
 
 const schema = z.object({
-  username: z.string().trim().min(3).max(60).regex(/^[\p{L}\p{N}_.@-]+$/u),
-  password: z.string().min(6).max(160)
+  username: z.string().trim().min(1).max(60).regex(/^[\p{L}\p{N}_.@-]+$/u),
+  password: z.string().min(1).max(160)
 })
 
 type Attempt = { count: number; lockedUntil: number; firstAt: number }
@@ -49,7 +49,22 @@ export default defineEventHandler(async (event) => {
   checkLimit(key)
 
   const user = await prisma.user.findUnique({ where: { username: body.username } })
-  const valid = user && user.active && await bcrypt.compare(body.password, user.password)
+  let valid = false
+  if (user && user.active) {
+    const storedPassword = String(user.password || '')
+    const looksHashed = storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')
+    if (looksHashed) {
+      valid = await bcrypt.compare(body.password, storedPassword)
+    } else {
+      valid = storedPassword === body.password
+      if (valid) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { password: await bcrypt.hash(body.password, 10) }
+        })
+      }
+    }
+  }
   if (!valid || !user) {
     recordFailure(key)
     await new Promise(resolve => setTimeout(resolve, 450))
