@@ -3,3 +3,7 @@ node_modules
 .output
 .env
 .DS_Store
+.env.*
+dist
+coverage
+*.log
