@@ -560,3 +560,73 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 @media (min-width: 1536px) {
   .page-pad { max-width: 1540px; margin-inline: auto; }
 }
+
+/* V30: stable full-screen installment extension modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(.75rem, 2vw, 1.5rem);
+  background: rgba(0, 0, 0, .58);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+.modal-panel {
+  width: min(44rem, calc(100vw - 1.5rem));
+  max-height: min(92vh, 92dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 28px 90px rgba(0,0,0,.45);
+  padding: 1.25rem;
+  scrollbar-gutter: stable;
+}
+.modal-header {
+  position: sticky;
+  top: -1.25rem;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: -1.25rem -1.25rem 1rem;
+  padding: 1rem 1.25rem;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  border-bottom: 1px solid var(--border);
+  border-radius: 24px 24px 0 0;
+  backdrop-filter: blur(14px);
+}
+.extend-installment-modal { padding-bottom: 1.35rem; }
+.extend-installment-modal .grid { min-width: 0; }
+@media (max-width: 768px) {
+  .modal-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding: .65rem;
+    padding-bottom: calc(.65rem + env(safe-area-inset-bottom));
+  }
+  .modal-panel {
+    width: 100%;
+    max-width: 100%;
+    max-height: min(88vh, 88dvh);
+    border-radius: 24px 24px 16px 16px;
+    padding: 1rem;
+  }
+  .modal-header {
+    top: -1rem;
+    margin: -1rem -1rem 1rem;
+    padding: .9rem 1rem;
+    border-radius: 24px 24px 0 0;
+  }
+  .modal-header h3 { font-size: 1.15rem !important; }
+  .extend-installment-modal .btn-primary { width: 100%; min-height: 50px; }
+}
+@media (max-width: 380px) {
+  .modal-panel { max-height: min(91vh, 91dvh); padding: .85rem; }
+  .modal-header { top: -.85rem; margin: -.85rem -.85rem .85rem; padding: .8rem .85rem; }
+}
