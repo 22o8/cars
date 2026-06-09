@@ -21,6 +21,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     jwtSecret: process.env.JWT_SECRET || 'change-this-secret',
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
     public: {
       appName: 'AutoDealer Pro',
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000'
