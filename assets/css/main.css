@@ -285,3 +285,10 @@ html, body { overflow-x: hidden; }
   .dashboard-hero { border-radius: 1.25rem; padding: 1rem; }
   .dashboard-hero .h-20 { height: 3.8rem; width: 3.8rem; border-radius: 1rem; }
 }
+
+
+/* Responsive modal and tables */
+@media (max-width: 640px){
+  .table{font-size:12px}
+  .action-bar{display:flex;flex-direction:column;gap:.5rem}
+}

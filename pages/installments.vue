@@ -18,12 +18,12 @@
       </tbody></table>
     </div>
     <div v-if="selected" class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" @click.self="selected=null">
-      <div class="card w-full max-w-xl p-6"><div class="mb-4 flex items-center justify-between"><h3 class="text-2xl font-black">تسديد قسط</h3><button class="btn-secondary btn" @click="selected=null">إغلاق</button></div>
-        <div class="grid gap-4"><div class="soft-card p-4"><div class="text-muted">المتبقي على هذا القسط</div><b class="text-xl text-amber-500">{{money(remain(selected), selected.sale.currency)}}</b></div><FormField label="مبلغ التسديد" hint="اكتب مبلغاً جزئياً أو اتركه مساوياً للمتبقي للتسديد الكامل"><input v-model.number="payAmount" type="number" class="input"></FormField><FormField label="ملاحظات الدفعة" hint="اختياري"><input v-model="payNotes" class="input" placeholder="مثال: تم الدفع نقداً"></FormField><button class="btn-primary btn" :disabled="busy" @click="submitPay">حفظ الدفعة وربطها بالخزنة</button></div>
+      <div class="card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6"><div class="mb-4 flex items-center justify-between"><h3 class="text-2xl font-black">تسديد قسط</h3><button class="btn-secondary btn" @click="selected=null">إغلاق</button></div>
+        <div class="grid gap-4 pb-2"><div class="soft-card p-4"><div class="text-muted">المتبقي على هذا القسط</div><b class="text-xl text-amber-500">{{money(remain(selected), selected.sale.currency)}}</b></div><FormField label="مبلغ التسديد" hint="اكتب مبلغاً جزئياً أو اتركه مساوياً للمتبقي للتسديد الكامل"><input v-model.number="payAmount" type="number" class="input"></FormField><FormField label="ملاحظات الدفعة" hint="اختياري"><input v-model="payNotes" class="input" placeholder="مثال: تم الدفع نقداً"></FormField><button class="btn-primary btn" :disabled="busy" @click="submitPay">حفظ الدفعة وربطها بالخزنة</button></div>
       </div>
     </div>
     <div v-if="extendSelected" class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" @click.self="extendSelected=null">
-      <div class="card w-full max-w-xl p-6">
+      <div class="card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <div class="mb-4 flex items-center justify-between"><h3 class="text-2xl font-black">تمديد مدة الدفعات</h3><button class="btn-secondary btn" @click="extendSelected=null">إغلاق</button></div>
         <div class="grid gap-4">
           <div class="soft-card p-4"><div class="text-muted">سيتم الحفاظ على ترتيب الدفعات وتواريخها، مع تأخير المدة المختارة فقط.</div><b>{{extendSelected.sale.customer.fullName}} - {{extendSelected.sale.car.brand}} {{extendSelected.sale.car.model}}</b></div>
