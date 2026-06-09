@@ -2,7 +2,7 @@
   <section class="page-pad fast-fade">
     <div class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div><h1 class="text-3xl font-black">السيارات والمخزن</h1><p class="text-muted mt-2">إضافة وتعديل السيارات مع الأسعار والصور والحالة، وكل شيء مربوط بالمبيعات والفواتير.</p></div>
-      <button class="btn-secondary btn" @click="refresh">تحديث البيانات</button>
+      <div class="flex flex-col gap-2 sm:flex-row"><button class="btn-primary btn" @click="showCarScan=true">فحص سريع للسيارة</button><button class="btn-secondary btn" @click="refresh">تحديث البيانات</button></div>
     </div>
     <div v-if="message" class="mb-4 rounded-2xl border p-4 font-bold" :class="messageType==='error'?'border-red-500/40 text-red-500':'border-emerald-500/40 text-emerald-500'">{{message}}</div>
     <div class="card p-5 mb-6">
@@ -32,17 +32,30 @@
       <div class="card p-4"><div class="text-muted text-sm">المحجوزة/الصيانة</div><b class="text-2xl text-amber-500">{{ cars.filter(c=>['RESERVED','MAINTENANCE'].includes(c.status)).length }}</b></div>
     </div>
     <div class="card overflow-x-auto"><table class="table"><thead><tr><th>الصورة</th><th>السيارة</th><th>السنة</th><th>اللون</th><th>سعر الشراء</th><th>سعر البيع</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody><tr v-for="c in cars" :key="c.id"><td><img v-if="firstImage(c)" :src="firstImage(c)" class="h-14 w-20 rounded-xl object-cover"><span v-else class="text-muted">لا توجد</span></td><td class="font-black">{{c.brand}} {{c.model}}<div class="text-xs text-muted">{{c.plateNumber || c.vinNumber || ''}}</div></td><td>{{c.year}}</td><td>{{c.color || '-'}}</td><td>{{money(c.purchasePrice,c.currency)}}</td><td>{{money(c.salePrice,c.currency)}}</td><td><span class="badge">{{status(c.status)}}</span></td><td><div class="action-bar"><button class="btn-secondary btn py-2" @click="edit(c)">تعديل</button><button class="btn-danger btn py-2" @click="remove(c)">حذف</button></div></td></tr></tbody></table></div>
+    <QuickScanModal v-model="showCarScan" type="car" @apply="applyCarScan" />
   </section>
 </template>
 <script setup lang="ts">
 const { data: carsData, refresh } = useLazyFetch<any[]>('/api/cars', { default: () => [] })
 const cars = computed(()=>carsData.value || [])
 const empty={brand:'',model:'',year:new Date().getFullYear(),color:'',purchasePrice:0,salePrice:0,currency:'IQD',status:'AVAILABLE',plateNumber:'',vinNumber:'',mileage:0,description:''}
-const form=reactive<any>({...empty}); const images=ref<string[]>([]); const editingId=ref(''); const busy=ref(false); const message=ref(''); const messageType=ref<'ok'|'error'>('ok')
+const form=reactive<any>({...empty}); const images=ref<string[]>([]); const editingId=ref(''); const busy=ref(false); const showCarScan=ref(false); const message=ref(''); const messageType=ref<'ok'|'error'>('ok')
 function notify(t:string,type:'ok'|'error'='ok'){ message.value=t; messageType.value=type; setTimeout(()=>message.value='',3500) }
 function fileToData(file:File){return new Promise<string>((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result)); r.onerror=reject; r.readAsDataURL(file)})}
 async function onImages(e:any){ images.value=[]; for(const f of Array.from(e.target.files||[]) as File[]) images.value.push(await fileToData(f)) }
 function reset(){ Object.assign(form,{...empty,year:new Date().getFullYear()}); images.value=[]; editingId.value='' }
+
+function applyCarScan(payload:any){
+  const f = payload?.fields || {}
+  for (const key of ['brand','model','color','plateNumber','vinNumber','description']) {
+    if (f[key]) form[key] = String(f[key]).trim()
+  }
+  if (f.year) form.year = Number(String(f.year).replace(/[^0-9]/g,'')) || form.year
+  if (f.mileage) form.mileage = Number(String(f.mileage).replace(/[^0-9]/g,'')) || form.mileage
+  if (payload?.image) images.value = [payload.image, ...images.value].slice(0, 8)
+  notify('تم إدخال بيانات الفحص السريع، راجع الحقول قبل الحفظ')
+}
+
 async function save(){ if(!form.brand||!form.model) return notify('اكتب شركة السيارة والموديل أولاً','error'); busy.value=true; try{ const body={...form,imageUrls:images.value}; if(editingId.value) await $fetch(`/api/cars/${editingId.value}`,{method:'PATCH',body}); else await $fetch('/api/cars',{method:'POST',body}); const wasEditing=!!editingId.value; reset(); await refresh(); notify(wasEditing?'تم تعديل السيارة':'تمت إضافة السيارة') }catch(e:any){ notify(e?.data?.message||'تعذر حفظ السيارة','error') }finally{busy.value=false} }
 function edit(c:any){ editingId.value=c.id; Object.assign(form,{brand:c.brand,model:c.model,year:c.year,color:c.color||'',purchasePrice:Number(c.purchasePrice||0),salePrice:Number(c.salePrice||0),currency:c.currency,status:c.status,plateNumber:c.plateNumber||'',vinNumber:c.vinNumber||'',mileage:c.mileage||0,description:c.description||''}); images.value=Array.isArray(c.imageUrls)?[...c.imageUrls]:[]; window.scrollTo({top:0,behavior:'smooth'}) }
 function cancelEdit(){ reset() }
