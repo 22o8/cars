@@ -25,7 +25,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     '/reports': 'reports',
     '/statistics': 'reports',
     '/employees': 'employees',
-    '/settings': 'settings'
+    '/settings': 'settings',
+    '/audit-logs': 'settings'
   }
 
   const needed = Object.entries(permissionByPrefix).find(([p]) => to.path.startsWith(p))?.[1]

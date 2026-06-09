@@ -300,7 +300,8 @@ const menu = [
   { title: 'الإعدادات', items: [
     { to: '/settings/system', label: 'إعدادات النظام', short: 'نظام', icon: 'settings' },
     { to: '/settings/account', label: 'إعدادات الحساب', short: 'حساب', icon: 'userCog' },
-    { to: '/settings/backup', label: 'النسخ الاحتياطي والضبط', short: 'نسخ', icon: 'database' }
+    { to: '/settings/backup', label: 'النسخ الاحتياطي والضبط', short: 'نسخ', icon: 'database' },
+    { to: '/audit-logs', label: 'سجل العمليات والتدقيق', short: 'تدقيق', icon: 'list' }
   ] }
 ]
 
@@ -317,6 +318,7 @@ function itemPermission(to: string) {
   if (to.startsWith('/reports')) return 'reports'
   if (to.startsWith('/employees')) return 'employees'
   if (to.startsWith('/settings')) return 'settings'
+  if (to.startsWith('/audit-logs')) return 'settings'
   return 'dashboard'
 }
 const visibleMenu = computed(() => menu.map(g => ({ ...g, items: g.items.filter((i: any) => isAdmin.value || auth.can(itemPermission(i.to))) })).filter(g => g.items.length))
