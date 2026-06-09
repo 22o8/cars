@@ -9,7 +9,7 @@
       <h2 class="mb-4 text-xl font-black">{{ editingId ? 'تعديل بيانات السيارة' : 'إضافة سيارة جديدة' }}</h2>
       <div class="form-grid">
         <FormField label="شركة السيارة" hint="مثال: تويوتا، هيونداي، كيا"><input v-model.trim="form.brand" class="input" placeholder="اكتب شركة السيارة"></FormField>
-        <FormField label="موديل السيارة" hint="مثال: كامري، لاندكروز، توسان"><input v-model.trim="form.model" class="input" placeholder="اكتب موديل السيارة"></FormField>
+        <FormField label="اسم السيارة او النوع" hint="مثال: كامري، لاندكروز، توسان"><input v-model.trim="form.model" class="input" placeholder="اكتب اسم السيارة او النوع"></FormField>
         <FormField label="سنة الصنع" hint="مثال: 2024"><input v-model.number="form.year" type="number" class="input" placeholder="سنة السيارة"></FormField>
         <FormField label="لون السيارة" hint="مثال: أبيض، أسود، رصاصي"><input v-model.trim="form.color" class="input" placeholder="لون السيارة"></FormField>
         <FormField label="سعر الشراء" hint="المبلغ الذي دخلت به السيارة إلى المعرض"><input v-model.number="form.purchasePrice" type="number" class="input" placeholder="سعر الشراء"></FormField>

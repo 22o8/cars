@@ -8,6 +8,7 @@
       <div class="px-6 py-6 border-b" style="border-color: var(--border)">
         <div class="text-2xl font-black tracking-tight">AutoDealer Pro</div>
         <div class="mt-2 text-xs text-slate-400">نظام ويب لإدارة معارض السيارات</div>
+<<<<<<< HEAD
         <div v-if="auth.user" class="mt-5 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
           <img v-if="auth.user.profileImage" :src="auth.user.profileImage" class="h-12 w-12 rounded-2xl object-cover" alt="صورة المستخدم" />
           <div v-else class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600/25 text-lg font-black text-white">{{ userInitial }}</div>
@@ -16,6 +17,8 @@
             <div class="truncate text-xs text-slate-400">{{ roleLabel }}</div>
           </div>
         </div>
+=======
+>>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
       </div>
 
       <div class="sidebar-scroll flex-1 overflow-y-auto px-4 py-5">
@@ -51,6 +54,7 @@
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
               <h1 class="truncate text-xl font-black lg:text-2xl">{{ pageTitle }}</h1>
+<<<<<<< HEAD
               <p class="truncate text-xs text-muted lg:text-sm">مرحباً بك، {{ auth.user.fullName }} - {{ roleLabel }}</p>
             </div>
             <div class="flex items-center gap-2 lg:hidden">
@@ -60,6 +64,14 @@
                 <span>القائمة</span>
               </button>
             </div>
+=======
+              <p class="truncate text-xs text-muted lg:text-sm">مرحباً بك، {{ auth.user.fullName }}</p>
+            </div>
+            <button class="btn-primary btn shrink-0 px-4 py-2 lg:hidden" @click="showMobileMenu = true">
+              <IconLine name="menu" />
+              <span>القائمة</span>
+            </button>
+>>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
           </div>
 
           <div class="mobile-search flex items-center gap-3 rounded-2xl border px-4 py-3" style="border-color: var(--border); background: var(--panel-2)">
@@ -103,6 +115,7 @@
     <div v-if="showMobileMenu && auth.user" class="fixed inset-0 z-50 bg-black/60 lg:hidden" @click.self="showMobileMenu = false">
       <aside class="mobile-drawer h-full w-[92vw] max-w-[390px] overflow-y-auto border-l p-4" style="background: linear-gradient(180deg, var(--sidebar), var(--sidebar-2)); border-color: var(--border)">
         <div class="mb-5 flex items-center justify-between text-white">
+<<<<<<< HEAD
           <div class="flex items-center gap-3">
             <img v-if="auth.user.profileImage" :src="auth.user.profileImage" class="h-12 w-12 rounded-2xl object-cover" alt="صورة المستخدم" />
             <div v-else class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600/25 text-lg font-black text-white">{{ userInitial }}</div>
@@ -110,6 +123,11 @@
               <div class="text-xl font-black">AutoDealer Pro</div>
               <div class="mt-1 text-xs text-slate-400">{{ auth.user.fullName }} - {{ roleLabel }}</div>
             </div>
+=======
+          <div>
+            <div class="text-xl font-black">AutoDealer Pro</div>
+            <div class="mt-1 text-xs text-slate-400">{{ auth.user.fullName }}</div>
+>>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
           </div>
           <button class="btn-secondary btn px-3 py-2 text-xs" @click="showMobileMenu = false">إغلاق</button>
         </div>
@@ -154,7 +172,11 @@ onMounted(() => {
   initTheme()
   notificationStatus.value = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission as any
   window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt as any)
+<<<<<<< HEAD
   if (notificationStatus.value === 'granted') startNotificationPolling(true)
+=======
+  if (notificationStatus.value === 'granted') startNotificationPolling()
+>>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
 })
 
 onBeforeUnmount(() => {
@@ -191,8 +213,11 @@ async function enableNotifications() {
     notificationStatus.value = 'granted'
   }
   if (notificationStatus.value === 'granted') {
+<<<<<<< HEAD
     if ('serviceWorker' in navigator) await navigator.serviceWorker.ready.catch(() => null)
     await showSystemNotification('تم تفعيل الإشعارات', 'ستصلك تنبيهات الأقساط المستحقة والمتأخرة أثناء استخدام النظام.')
+=======
+>>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
     startNotificationPolling(true)
   } else if (notificationStatus.value === 'denied') {
     alert('الإشعارات محظورة من المتصفح. فعّلها من إعدادات الموقع حتى تصلك تنبيهات الأقساط.')
@@ -223,13 +248,22 @@ function startNotificationPolling(runNow = false) {
       if (key === lastNotifiedKey || localStorage.getItem('adp_last_due_notification') === key) return
       lastNotifiedKey = key
       localStorage.setItem('adp_last_due_notification', key)
+<<<<<<< HEAD
       await showSystemNotification('تنبيه أقساط مستحقة', count === 1 ? `يوجد قسط مستحق على ${first?.sale?.customer?.fullName || 'أحد العملاء'}` : `يوجد ${count} أقساط مستحقة أو متأخرة تحتاج متابعة`)
+=======
+      new Notification('تنبيه أقساط مستحقة', {
+        body: count === 1 ? `يوجد قسط مستحق على ${first?.sale?.customer?.fullName || 'أحد العملاء'}` : `يوجد ${count} أقساط مستحقة أو متأخرة تحتاج متابعة`,
+        tag: 'autodealer-installments-due',
+        icon: '/icons/icon-192.svg'
+      })
+>>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
     } catch {}
   }
   if (runNow) check()
   notificationTimer = setInterval(check, 60_000)
 }
 
+<<<<<<< HEAD
 async function showSystemNotification(title: string, body: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   const options: NotificationOptions = { body, tag: 'autodealer-pro', icon: '/icons/icon-192.svg', badge: '/icons/icon-192.svg' }
@@ -248,6 +282,8 @@ const roleLabel = computed(() => {
 })
 const userInitial = computed(() => (auth.user?.fullName || auth.user?.username || 'م').trim().slice(0, 1))
 
+=======
+>>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
 const menu = [
   { title: '', items: [{ to: '/', label: 'لوحة التحكم', short: 'الرئيسية', icon: 'grid' }] },
   { title: 'إدارة السيارات', items: [
