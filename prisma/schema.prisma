@@ -65,6 +65,7 @@ model Customer {
   fullName  String
   phone     String
   phone2    String?
+  nationalId String?
   address   String?
   notes     String?
   documentImages Json?

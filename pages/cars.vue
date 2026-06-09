@@ -52,7 +52,8 @@ function applyCarScan(payload:any){
   }
   if (f.year) form.year = Number(String(f.year).replace(/[^0-9]/g,'')) || form.year
   if (f.mileage) form.mileage = Number(String(f.mileage).replace(/[^0-9]/g,'')) || form.mileage
-  if (payload?.image) images.value = [payload.image, ...images.value].slice(0, 8)
+  if (payload?.images?.length) images.value = [...payload.images, ...images.value].slice(0, 10)
+  else if (payload?.image) images.value = [payload.image, ...images.value].slice(0, 10)
   notify('تم إدخال بيانات الفحص السريع، راجع الحقول قبل الحفظ')
 }
 
