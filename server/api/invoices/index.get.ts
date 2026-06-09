@@ -1,3 +1,8 @@
 import { prisma } from '../../utils/db'
-import { requireUser } from '../../utils/auth'
-export default defineEventHandler(async(event)=>{ await requireUser(event); return prisma.invoice.findMany({orderBy:{invoiceDate:'desc'}, take:100}) })
+import { requirePermission } from '../../utils/auth'
+import { syncInstallments } from '../../utils/installments'
+export default defineEventHandler(async(event)=>{
+  await requirePermission(event, 'invoices')
+  await syncInstallments(prisma)
+  return prisma.invoice.findMany({orderBy:{invoiceDate:'desc'}, take:200, include:{sale:{include:{customer:true,car:true}}}})
+})

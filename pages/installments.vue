@@ -2,7 +2,7 @@
   <section class="page-pad fast-fade">
     <div class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div><h1 class="text-3xl font-black">الأقساط والدفعات</h1><p class="text-muted mt-2">متابعة الأقساط المستحقة والمتأخرة وتسجيل دفعة كاملة أو جزئية، وكل دفعة ترتبط بالمبيعات والخزنة والفواتير.</p></div>
-      <div class="flex flex-wrap gap-2"><button class="btn-secondary btn" :disabled="busy" @click="repairLinks">إصلاح ربط الأقساط</button><button class="btn-primary btn" @click="refresh">تحديث البيانات</button></div>
+      <div class="flex flex-wrap gap-2"><button class="btn-primary btn" @click="refresh">تحديث البيانات</button></div>
     </div>
     <div v-if="message" class="mb-4 rounded-2xl border p-4 font-bold" :class="messageType==='error'?'border-red-500/40 text-red-500':'border-emerald-500/40 text-emerald-500'">{{message}}</div>
     <div class="grid gap-4 lg:grid-cols-4 mb-6">
@@ -33,6 +33,5 @@ function notify(t:string,type:'ok'|'error'='ok'){ message.value=t; messageType.v
 function remain(i:any){ return Math.max(Number(i.amount||0)-Number(i.paidAmount||0),0) }
 function openPay(i:any){ selected.value=i; payAmount.value=remain(i); payNotes.value='' }
 async function submitPay(){ if(!selected.value) return; if(payAmount.value<=0) return notify('اكتب مبلغ تسديد صحيح','error'); busy.value=true; try{ await $fetch(`/api/installments/${selected.value.id}/pay`, { method:'POST', body:{amount:Number(payAmount.value), notes:payNotes.value} }); selected.value=null; await refresh(); notify('تم تسجيل الدفعة وتحديث القسط والخزنة والفاتورة') }catch(e:any){ notify(e?.data?.message||'تعذر تسجيل الدفعة','error') }finally{ busy.value=false } }
-async function repairLinks(){ busy.value=true; try{ const r:any = await $fetch('/api/installments/repair',{method:'POST'}); await refresh(); notify(`تم فحص الربط وإنشاء ${r.created || 0} قسط مفقود`) }catch(e:any){ notify(e?.data?.message||'تعذر إصلاح الربط','error') }finally{ busy.value=false } }
 function status(s:string){return {PENDING:'معلق',PARTIAL:'مدفوع جزئياً',PAID:'مدفوع',LATE:'متأخر'}[s]||s}
 </script>

@@ -29,11 +29,12 @@ export default defineEventHandler(async(event)=>{
   if(b.saleType==='TRADE_IN' && tradeValue>0){ await tx.cashboxTransaction.create({data:{type:'INCOME', amount:tradeValue, currency:b.currency, description:'قيمة سيارة مراوسة محسوبة ضمن البيع', referenceId:s.id}}) }
   if(b.saleType !== 'CASH' && remaining > 0){
     const count = Math.max(1, Number(b.installmentsCount || 1))
-    const amount = Math.round((remaining / count) * 100) / 100
+    const baseAmount = Math.floor((remaining / count) * 100) / 100
     const start = b.firstDueDate ? new Date(b.firstDueDate) : new Date()
     for(let i = 1; i <= count; i++){
       const d = new Date(start)
       d.setDate(start.getDate() + ((i - 1) * Number(b.intervalDays || 30)))
+      const amount = i === count ? Math.round((remaining - (baseAmount * (count - 1))) * 100) / 100 : baseAmount
       await tx.installment.create({
         data: {
           saleId: s.id,
@@ -41,7 +42,7 @@ export default defineEventHandler(async(event)=>{
           amount,
           paidAmount: 0,
           dueDate: d,
-          status: 'PENDING'
+          status: d < new Date() ? 'LATE' : 'PENDING'
         }
       })
     }
