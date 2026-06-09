@@ -134,8 +134,8 @@ const ocrCache = reactive<Record<string, string>>({})
 
 const title = computed(()=> props.type === 'car' ? 'فحص سريع للسنوية' : 'فحص سريع لهوية العميل')
 const subtitle = computed(()=> props.type === 'car'
-  ? 'صوّر وجه وظهر السنوية. النظام يحفظ الصور ويقرأ البيانات المتاحة تلقائياً.'
-  : 'صوّر وجه وظهر الهوية. النظام يحفظ المستمسكات ويقرأ الاسم والرقم والعنوان المتاح.')
+  ? 'صوّر وجه وظهر السنوية. سيتم استخراج: A رقم اللوحة، D.1 الشركة، D.3 النوع، R اللون، P.5 الشاصي، 11 الموديل.'
+  : 'صوّر وجه وظهر الهوية. سيتم استخراج الاسم الثلاثي والرقم الوطني أو رقم الهوية فقط، مع حفظ صور الوجه والظهر.')
 const frontLabel = computed(()=> props.type === 'car' ? 'وجه السنوية' : 'وجه الهوية')
 const backLabel = computed(()=> props.type === 'car' ? 'ظهر السنوية' : 'ظهر الهوية')
 const currentImage = computed(()=> side.value === 'front' ? images.front : images.back)
@@ -149,12 +149,18 @@ const statusText = computed(()=> {
 
 const fields = computed(()=> props.type === 'car'
   ? [
-      {key:'brand',label:'شركة السيارة'}, {key:'model',label:'اسم السيارة أو النوع'}, {key:'year',label:'سنة الصنع'}, {key:'color',label:'اللون'},
-      {key:'plateNumber',label:'رقم اللوحة'}, {key:'vinNumber',label:'رقم الشاصي'}, {key:'mileage',label:'العداد'}, {key:'description',label:'ملاحظات'}
+      {key:'plateNumber',label:'A رقم لوحة السيارة'},
+      {key:'brand',label:'D.1 شركة السيارة'},
+      {key:'model',label:'D.3 اسم السيارة أو النوع'},
+      {key:'color',label:'R لون السيارة'},
+      {key:'vinNumber',label:'P.5 رقم الشاصي'},
+      {key:'year',label:'11 موديل السيارة'},
+      {key:'description',label:'نص السنوية وصور المستمسك'}
     ]
   : [
-      {key:'fullName',label:'اسم العميل'}, {key:'nationalId',label:'الرقم الوطني أو رقم الهوية'}, {key:'phone',label:'رقم الهاتف'},
-      {key:'phone2',label:'رقم هاتف إضافي'}, {key:'address',label:'العنوان'}, {key:'notes',label:'ملاحظات'}
+      {key:'fullName',label:'الاسم الثلاثي'},
+      {key:'nationalId',label:'الرقم الوطني أو رقم الهوية'},
+      {key:'notes',label:'نص الهوية وصور المستمسك'}
     ])
 const visibleFields = computed(()=>fields.value)
 
@@ -470,50 +476,126 @@ function detectColor(t:string){
   for (const k of Object.keys(colors)) if (lower.includes(k.toLowerCase())) return colors[k]
   return ''
 }
+
+function stripNoiseLine(v:string){
+  return cleanupValue(String(v||'')
+    .replace(/Republic of Iraq|Ministry of Interior|Vehicle Registration License|Registration Certificate|وزارة الداخلية|جمهورية العراق|مديرية المرور|تسجيل المركبة|سنوية|خصوصي|حمل|اجرة/ig,' ')
+    .replace(/\b(A|D\.?1|D\.?3|R|P\.?5|11)\b\s*[:：\-]?/ig,' '))
+}
+function nearbyValue(text:string, marker:string, maxChars=90){
+  const re = new RegExp(`${escapeRegex(marker)}\\s*[:：\\-،]?\\s*([^\\n]{1,${maxChars}})`, 'i')
+  const m = text.match(re)
+  return m?.[1] ? stripNoiseLine(m[1]) : ''
+}
+function findByCodeLabel(text:string, labels:string[]){
+  for (const label of labels) {
+    const v = nearbyValue(text, label)
+    if (v) return v
+  }
+  return ''
+}
+function extractIraqiVehiclePlate(text:string){
+  const t = normalize(text).toUpperCase()
+  const codeVal = findByCodeLabel(t, ['A.', 'A ', 'A-', 'رقم المركبة', 'رقم التسجيل', 'رقم اللوحة', 'اللوحة'])
+  const fromCode = cleanDigits(codeVal).match(/[A-Z]{0,3}\d{4,10}/)?.[0]
+  if (fromCode) return fromCode
+  const candidates = Array.from(new Set((t.match(/\b[A-Z]{1,3}\s?\d{4,8}\b|\b\d{5,10}\b/g) || []).map(x=>x.replace(/\s+/g,''))))
+  const filtered = candidates.filter(x => !/^(19|20)\d{2}$/.test(x) && x.length >= 5 && x.length <= 10)
+  return filtered[0] || ''
+}
+function extractIraqiVin(text:string){
+  const t = normalize(text).toUpperCase().replace(/\s+/g,' ')
+  const codeVal = findByCodeLabel(t, ['P.5', 'P5', 'رقم الشاصي', 'رقم الهيكل', 'الشاصي', 'VIN', 'CHASSIS'])
+  const fromCode = codeVal.toUpperCase().match(/[A-HJ-NPR-Z0-9]{12,20}/)?.[0]
+  if (fromCode) return fromCode
+  return (t.match(/\b[A-HJ-NPR-Z0-9]{12,20}\b/) || [])[0] || ''
+}
+function extractVehicleModelYear(text:string){
+  const t = normalize(text)
+  const v = findByCodeLabel(t, ['11.', '11 ', 'الموديل', 'موديل', 'سنة الصنع', 'MODEL YEAR'])
+  const y = (v.match(/\b(19[8-9]\d|20[0-4]\d)\b/) || t.match(/\b(19[8-9]\d|20[0-4]\d)\b/))?.[1]
+  return y || ''
+}
+function extractVehicleBrand(text:string){
+  const t = normalize(text)
+  const byCode = findByCodeLabel(t, ['D.1', 'D1', 'الشركة', 'الصنع', 'الماركة', 'MAKE'])
+  const detected = detectCarBrand(`${byCode}\n${t}`)
+  return detected || stripNoiseLine(byCode)
+}
+function extractVehicleType(text:string){
+  const t = normalize(text)
+  const byCode = findByCodeLabel(t, ['D.3', 'D3', 'النوع', 'الطراز', 'MODEL', 'TYPE'])
+  const cleaned = stripNoiseLine(byCode).replace(/\b(TOYOTA|BMW|KIA|HYUNDAI|NISSAN|CHEVROLET|FORD|MERCEDES|LEXUS|HONDA)\b/ig,'').trim()
+  if (cleaned && cleaned.length > 1) return cleaned
+  const lines = t.split(/\n/).map(stripNoiseLine).filter(Boolean)
+  return lines.find(l => /كامري|كورولا|لاندكروزر|النترا|سوناتا|سبورتاج|اوبتما|ماليبو|تاهو|Camry|Corolla|Land|Sportage|Elantra|Sonata/i.test(l)) || ''
+}
+function extractVehicleColor(text:string){
+  const t = normalize(text)
+  const byCode = findByCodeLabel(t, ['R.', 'R ', 'R-', 'اللون', 'COLOR'])
+  return detectColor(`${byCode}\n${t}`) || stripNoiseLine(byCode)
+}
+function extractCustomerName(text:string){
+  const t = normalize(text)
+  const labeled = valueAfter(t, ['الاسم الثلاثي','الاسم الكامل','اسم المواطن','الاسم','Name','Full Name'])
+  const cleanedLabeled = labeled ? stripNoiseLine(labeled) : ''
+  if (cleanedLabeled && cleanedLabeled.split(/\s+/).length >= 2) return limitNameWords(cleanedLabeled)
+  return limitNameWords(likelyArabicName(t) || likelyEnglishName(t) || parseMrzName(t.toUpperCase()))
+}
+function limitNameWords(name:string){
+  const words = cleanupValue(name).split(/\s+/).filter(Boolean)
+    .filter(w => !/^(جمهورية|العراق|وزارة|الداخلية|البطاقة|الوطنية|هوية|ذكر|انثى|male|female|iraq)$/i.test(w))
+  return words.slice(0, 4).join(' ')
+}
+function extractCustomerNationalId(text:string){
+  const t = normalize(text)
+  const labeled = valueAfter(t, ['الرقم الوطني','الرقم التعريفي','رقم البطاقة','رقم الهوية','National ID','ID Number','Document No'])
+  const labeledDigits = cleanDigits(labeled).match(/\d{6,14}/)?.[0]
+  if (labeledDigits) return labeledDigits
+  const nums = extractLongNumbers(t).filter(n => n.length >= 6 && n.length <= 14)
+  return nums.sort((a,b)=>b.length-a.length)[0] || ''
+}
+
 function ensureUsefulFallback(t:string){
   const text = normalize(t)
   if(props.type==='car'){
-    if(!draft.description && text) draft.description = `نص السنوية المقروء: ${text.slice(0,700)}`
-    if(!draft.brand) draft.brand = detectCarBrand(text)
-    if(!draft.plateNumber) draft.plateNumber = extractPlate(text)
-    if(!draft.vinNumber) draft.vinNumber = extractVin(text)
-    if(!draft.year) draft.year = firstYear(text)
-    if(!draft.color) draft.color = detectColor(text)
+    if(!draft.plateNumber) draft.plateNumber = extractIraqiVehiclePlate(text)
+    if(!draft.brand) draft.brand = extractVehicleBrand(text)
+    if(!draft.model) draft.model = extractVehicleType(text)
+    if(!draft.color) draft.color = extractVehicleColor(text)
+    if(!draft.vinNumber) draft.vinNumber = extractIraqiVin(text)
+    if(!draft.year) draft.year = extractVehicleModelYear(text)
+    if(!draft.description && text) draft.description = `نص السنوية المقروء: ${text.slice(0,900)}`
   }else{
-    const nums = extractLongNumbers(text)
-    if(!draft.fullName) draft.fullName = likelyArabicName(text) || likelyEnglishName(text) || parseMrzName(text.toUpperCase())
-    if(!draft.nationalId && nums.length) draft.nationalId = nums.sort((a,b)=>b.length-a.length)[0]
-    if(!draft.phone) draft.phone = extractPhone(text)
-    if(!draft.address) draft.address = extractAddress(text)
-    if(!draft.notes && text) draft.notes = `نص الهوية المقروء: ${text.slice(0,700)}`
+    if(!draft.fullName) draft.fullName = extractCustomerName(text)
+    if(!draft.nationalId) draft.nationalId = extractCustomerNationalId(text)
+    if(!draft.notes && text) draft.notes = `نص الهوية المقروء: ${text.slice(0,900)}`
   }
 }
 
 function parseText(input:string){
   const t = normalize(input)
-  const upper = t.toUpperCase()
   if(props.type==='car'){
-    draft.brand = valueAfter(t,['الشركة','شركة السيارة','الماركة','الصنع','brand','make','vehicle make']) || detectCarBrand(t) || draft.brand
-    draft.model = valueAfter(t,['الموديل','الطراز','النوع','اسم السيارة','model','vehicle','vehicle type','class']) || draft.model
-    draft.year = valueAfter(t,['السنة','سنة الصنع','year','model year']) || firstYear(t) || draft.year
-    draft.color = valueAfter(t,['اللون','color']) || detectColor(t) || draft.color
-    draft.plateNumber = valueAfter(t,['رقم اللوحة','اللوحة','رقم التسجيل','plate','plate number','registration','registration no']) || extractPlate(t) || draft.plateNumber
-    draft.vinNumber = valueAfter(t,['رقم الشاصي','الشاصي','رقم الهيكل','vin','vin number','chassis','chassis no']) || extractVin(t) || draft.vinNumber
-    draft.mileage = valueAfter(t,['العداد','الممشى','mileage','odometer']) || draft.mileage
+    // الحقول المطلوبة فقط من السنوية العراقية:
+    // A رقم اللوحة، D.1 الشركة، D.3 النوع، R اللون، P.5 الشاصي، 11 الموديل.
+    draft.plateNumber = extractIraqiVehiclePlate(t) || draft.plateNumber
+    draft.brand = extractVehicleBrand(t) || draft.brand
+    draft.model = extractVehicleType(t) || draft.model
+    draft.color = extractVehicleColor(t) || draft.color
+    draft.vinNumber = extractIraqiVin(t) || draft.vinNumber
+    draft.year = extractVehicleModelYear(t) || draft.year
     const descParts = []
-    if (t) descParts.push(`نص السنوية المقروء: ${t.slice(0,700)}`)
+    if (t) descParts.push(`نص السنوية المقروء: ${t.slice(0,900)}`)
     if (images.front) descParts.push('صورة وجه السنوية محفوظة')
     if (images.back) descParts.push('صورة ظهر السنوية محفوظة')
     draft.description = descParts.join(' | ') || draft.description
   } else {
-    draft.fullName = valueAfter(t,['الاسم الكامل','اسم العميل','الاسم','اسم','name','full name','surname','given names']) || likelyArabicName(t) || likelyEnglishName(t) || parseMrzName(upper) || draft.fullName
-    const nums = extractLongNumbers(t)
-    draft.nationalId = valueAfter(t,['الرقم الوطني','رقم الهوية','رقم البطاقة','national id','id number','document no','national no']) || (nums.length ? nums.sort((a,b)=>b.length-a.length)[0] : '') || draft.nationalId
-    draft.phone = valueAfter(t,['الهاتف','رقم الهاتف','phone','mobile']) || extractPhone(t) || draft.phone
-    draft.phone2 = valueAfter(t,['هاتف ثاني','رقم إضافي','phone2']) || draft.phone2
-    draft.address = valueAfter(t,['العنوان','عنوان السكن','السكن','محل السكن','address','place of birth','المحل']) || extractAddress(t) || draft.address
+    // الحقول المطلوبة فقط من الهوية:
+    // الاسم الثلاثي + الرقم الوطني أو رقم الهوية.
+    draft.fullName = extractCustomerName(t) || draft.fullName
+    draft.nationalId = extractCustomerNationalId(t) || draft.nationalId
     const noteParts = []
-    if (t) noteParts.push(`نص الهوية المقروء: ${t.slice(0,700)}`)
+    if (t) noteParts.push(`نص الهوية المقروء: ${t.slice(0,900)}`)
     if (images.front) noteParts.push('صورة وجه الهوية محفوظة')
     if (images.back) noteParts.push('صورة ظهر الهوية محفوظة')
     draft.notes = noteParts.join(' | ') || draft.notes
