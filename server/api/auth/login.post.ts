@@ -3,7 +3,6 @@ import { z } from 'zod'
 import { prisma } from '../../utils/db'
 import { signToken, userPermissions } from '../../utils/auth'
 
-<<<<<<< HEAD
 const schema = z.object({
   username: z.string().trim().min(3).max(60).regex(/^[\p{L}\p{N}_.@-]+$/u),
   password: z.string().min(6).max(160)
@@ -67,16 +66,5 @@ export default defineEventHandler(async (event) => {
     path: '/',
     maxAge: 60 * 60 * 24 * 14
   })
-=======
-const schema = z.object({ username: z.string().min(1), password: z.string().min(1) })
-export default defineEventHandler(async (event) => {
-  const body = schema.parse(await readBody(event))
-  const user = await prisma.user.findUnique({ where: { username: body.username } })
-  if (!user || !user.active) throw createError({ statusCode: 401, message: 'بيانات الدخول غير صحيحة' })
-  const ok = await bcrypt.compare(body.password, user.password)
-  if (!ok) throw createError({ statusCode: 401, message: 'بيانات الدخول غير صحيحة' })
-  const token = signToken({ id: user.id, role: user.role })
-  setCookie(event, 'adp_token', token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 7 })
->>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
   return { user: { id: user.id, fullName: user.fullName, username: user.username, role: user.role, profileImage: user.profileImage, permissions: userPermissions(user) } }
 })

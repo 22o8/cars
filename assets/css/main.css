@@ -260,7 +260,6 @@ html, body { overflow-x: hidden; }
   .desktop-sidebar { display: none !important; }
   .card, .soft-card { width: 100%; }
 }
-<<<<<<< HEAD
 
 /* V15 secure login and executive dashboard polish */
 .login-shell { font-family: Tahoma, Arial, sans-serif; }
@@ -286,5 +285,3 @@ html, body { overflow-x: hidden; }
   .dashboard-hero { border-radius: 1.25rem; padding: 1rem; }
   .dashboard-hero .h-20 { height: 3.8rem; width: 3.8rem; border-radius: 1rem; }
 }
-=======
->>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf

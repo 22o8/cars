@@ -1,6 +1,5 @@
 <template>
   <section class="page-pad">
-<<<<<<< HEAD
     <div class="dashboard-hero mb-8 overflow-hidden rounded-[2rem] border p-5 lg:p-7" style="border-color: var(--border); background: radial-gradient(circle at 12% 20%, rgba(47,125,246,.18), transparent 32%), var(--panel)">
       <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div class="flex items-center gap-4">
@@ -28,16 +27,6 @@
           <p class="mt-1 text-sm text-muted">حتى تصلك تنبيهات موعد التسديد والمتأخرات على الجهاز مثل أنظمة العمل الاحترافية.</p>
         </div>
         <button class="btn-primary btn" @click="requestNotifications">السماح بالإشعارات</button>
-=======
-    <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div>
-        <h1 class="text-3xl lg:text-4xl font-black">مرحباً بك في لوحة التحكم</h1>
-        <p class="mt-2 text-muted">نظرة عامة حقيقية على أداء المعرض من قاعدة البيانات</p>
-      </div>
-      <div class="flex gap-3">
-        <button class="btn-primary btn" @click="refresh">تحديث البيانات</button>
-        <NuxtLink to="/reports" class="btn-secondary btn">تصدير التقارير</NuxtLink>
->>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
       </div>
     </div>
 
@@ -116,10 +105,7 @@
   </section>
 </template>
 <script setup lang="ts">
-<<<<<<< HEAD
 const auth = useAuthStore()
-=======
->>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
 const { data, refresh } = useLazyFetch<any>('/api/dashboard')
 const stats = computed(() => [
   { label:'العملاء', value:data.value?.customers || 0, caption:'إجمالي العملاء', class:'' },
@@ -135,7 +121,6 @@ function x(i:number){ return 55 + i * (650 / Math.max(chart.value.length - 1, 1)
 function y(v:number){ return 290 - (Number(v||0) / maxVal.value) * 240 }
 const salesPoints = computed(() => chart.value.map((m:any,i:number)=>`${x(i)},${y(m.sales)}`).join(' '))
 const profitPoints = computed(() => chart.value.map((m:any,i:number)=>`${x(i)},${y(m.profit)}`).join(' '))
-<<<<<<< HEAD
 const userInitial = computed(() => (auth.user?.fullName || auth.user?.username || 'م').trim().slice(0, 1))
 const notificationHint = ref(false)
 onMounted(() => {
@@ -155,6 +140,4 @@ async function requestNotifications() {
     new Notification('تم تفعيل الإشعارات', { body: 'سيتم تنبيهك عند وجود أقساط مستحقة أو متأخرة.', icon: '/icons/icon-192.svg' })
   }
 }
-=======
->>>>>>> 35e1d7177da3a656fa8ec41967b4003683551daf
 </script>
