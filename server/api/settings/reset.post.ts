@@ -1,0 +1,6 @@
+import { z } from 'zod'
+import { prisma } from '../../utils/db'
+import { requirePermission } from '../../utils/auth'
+import { audit } from '../../utils/audit'
+const schema=z.object({confirm:z.string()})
+export default defineEventHandler(async(event)=>{ const user=await requirePermission(event,'settings'); if(user.role!=='ADMIN') throw createError({statusCode:403,message:'هذه العملية للمدير فقط'}); const b=schema.parse(await readBody(event)); if(b.confirm!=='RESET-AUTODEALER') throw createError({statusCode:400,message:'رمز التأكيد غير صحيح'}); await prisma.$transaction(async(tx)=>{ await tx.payment.deleteMany(); await tx.installment.deleteMany(); await tx.invoice.deleteMany(); await tx.sale.deleteMany(); await tx.cashboxTransaction.deleteMany(); await tx.expense.deleteMany(); await tx.customerDocument.deleteMany(); await tx.customer.deleteMany(); await tx.car.deleteMany(); await tx.carBrand.deleteMany(); await tx.customerCategory.deleteMany(); await tx.customerContact.deleteMany(); await tx.offerDiscount.deleteMany(); await tx.backupLog.deleteMany(); await tx.auditLog.deleteMany(); }); await audit(user.fullName,'إعادة ضبط المصنع','System','factory','تم مسح بيانات النظام التشغيلية'); return {ok:true} })

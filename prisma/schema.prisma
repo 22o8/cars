@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ACCOUNTANT
+  SALES
+  VIEWER
+}
+
+enum CarStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  MAINTENANCE
+  ARCHIVED
+}
+
+enum SaleType {
+  CASH
+  INSTALLMENT
+  TRADE_IN
+}
+
+enum Currency {
+  IQD
+  USD
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  LATE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  fullName  String
+  username  String   @unique
+  password  String
+  role      Role     @default(ADMIN)
+  active    Boolean  @default(true)
+  profileImage String?
+  permissions Json?
+  createdAt DateTime @default(now())
+  sales     Sale[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  fullName  String
+  phone     String
+  phone2    String?
+  address   String?
+  notes     String?
+  documentImages Json?
+  createdAt DateTime @default(now())
+  sales     Sale[]
+  documents CustomerDocument[]
+}
+
+model Car {
+  id            String    @id @default(cuid())
+  brand         String
+  model         String
+  year          Int
+  vinNumber     String?   @unique
+  plateNumber   String?
+  color         String?
+  mileage       Int       @default(0)
+  purchasePrice Decimal   @default(0)
+  salePrice     Decimal   @default(0)
+  currency      Currency  @default(IQD)
+  status        CarStatus @default(AVAILABLE)
+  description   String?
+  imageUrls     Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sales         Sale[]
+}
+
+model Sale {
+  id              String      @id @default(cuid())
+  carId           String
+  customerId      String
+  soldByUserId    String
+  saleType        SaleType    @default(CASH)
+  salePrice       Decimal
+  firstPayment    Decimal     @default(0)
+  paidAmount      Decimal     @default(0)
+  remainingAmount Decimal     @default(0)
+  currency        Currency    @default(IQD)
+  saleDate        DateTime    @default(now())
+  notes           String?
+  car             Car         @relation(fields: [carId], references: [id])
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  soldBy          User        @relation(fields: [soldByUserId], references: [id])
+  installments    Installment[]
+  payments        Payment[]
+  invoices        Invoice[]
+}
+
+model Installment {
+  id                String             @id @default(cuid())
+  saleId            String
+  installmentNumber Int
+  amount            Decimal
+  paidAmount        Decimal            @default(0)
+  dueDate           DateTime
+  status            InstallmentStatus  @default(PENDING)
+  paidDate          DateTime?
+  sale              Sale               @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  payments          Payment[]
+}
+
+model Payment {
+  id            String       @id @default(cuid())
+  saleId        String
+  installmentId String?
+  amount        Decimal
+  currency      Currency     @default(IQD)
+  paymentDate   DateTime     @default(now())
+  notes         String?
+  sale          Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  installment   Installment? @relation(fields: [installmentId], references: [id])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  title       String
+  amount      Decimal
+  currency    Currency @default(IQD)
+  category    String   @default("عام")
+  expenseDate DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+model CashboxTransaction {
+  id          String          @id @default(cuid())
+  type        TransactionType
+  amount      Decimal
+  currency    Currency        @default(IQD)
+  description String
+  referenceId String?
+  createdAt   DateTime        @default(now())
+}
+
+model Invoice {
+  id            String   @id @default(cuid())
+  invoiceNumber String   @unique
+  invoiceType   String
+  saleId        String?
+  customerName  String
+  customerPhone String?
+  title         String
+  amount        Decimal
+  currency      Currency @default(IQD)
+  paymentMethod String   @default("نقدي")
+  invoiceDate   DateTime @default(now())
+  notes         String?
+  sale          Sale?    @relation(fields: [saleId], references: [id])
+}
+
+model DealerSetting {
+  id           Int      @id @default(1)
+  dealerName   String   @default("AutoDealer Pro")
+  phone        String   @default("")
+  address      String   @default("")
+  logoUrl      String   @default("")
+  usdToIqdRate Decimal  @default(1310)
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userName  String
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+}
+
+model CarBrand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  category  String   @default("عام")
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model CustomerCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model CustomerContact {
+  id           String   @id @default(cuid())
+  customerName String
+  phone        String?
+  contactType  String   @default("متابعة")
+  notes        String?
+  contactDate  DateTime @default(now())
+  createdAt    DateTime @default(now())
+}
+
+model OfferDiscount {
+  id        String   @id @default(cuid())
+  title     String
+  type      String   @default("خصم")
+  value     Decimal  @default(0)
+  currency  Currency @default(IQD)
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model BackupLog {
+  id        String   @id @default(cuid())
+  title     String
+  status    String   @default("جاهز")
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+
+model CustomerDocument {
+  id          String   @id @default(cuid())
+  customerId  String
+  title       String   @default("مستمسك")
+  imageData   String
+  notes       String?
+  createdAt   DateTime @default(now())
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
