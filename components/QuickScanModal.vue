@@ -14,6 +14,11 @@
           {{ message }}
         </div>
 
+        <div v-if="ocrProgress" class="scan-ocr-progress">
+          <span>{{ ocrProgress }}</span>
+          <div class="scan-ocr-bar"><i :style="{ width: ocrPercent + '%' }"></i></div>
+        </div>
+
         <div class="scan-progress">
           <button class="scan-step" :class="side==='front'?'active':''" @click="selectSide('front')">
             <span>{{ images.front ? 'تم' : '1' }}</span>
@@ -65,9 +70,9 @@
           </div>
 
           <div class="scan-tools">
-            <button class="btn-primary btn w-full" @click="startSmartScan">فحص الآن</button>
-            <button class="btn-secondary btn w-full" :disabled="!cameraOn || countdown > 0" @click="captureAndAnalyze">التقاط وتحليل {{ side === 'front' ? frontLabel : backLabel }}</button>
-            <button class="btn-secondary btn w-full" :disabled="!images.front && !images.back" @click="analyzeSavedImages">تحليل الصور المحفوظة</button>
+            <button class="btn-primary btn w-full" :disabled="analyzing" @click="startSmartScan">فحص الآن</button>
+            <button class="btn-secondary btn w-full" :disabled="!cameraOn || countdown > 0 || analyzing" @click="captureAndAnalyze">التقاط وتحليل {{ side === 'front' ? frontLabel : backLabel }}</button>
+            <button class="btn-secondary btn w-full" :disabled="(!images.front && !images.back) || analyzing" @click="analyzeSavedImages">تحليل الصور المحفوظة OCR مجاني</button>
 
             <label class="scan-toggle">
               <input v-model="autoMode" type="checkbox">
@@ -78,7 +83,7 @@
               <input class="input" type="file" accept="image/*" capture="environment" @change="onFile">
             </FormField>
 
-            <FormField label="نص إضافي أو تعديل يدوي" hint="يمكنك لصق أي نص ظاهر إذا لم يتم قراءته تلقائياً">
+            <FormField label="نص إضافي أو تعديل يدوي" hint="النص المقروء يظهر هنا تلقائياً، ويمكن تعديله يدوياً عند الحاجة">
               <textarea v-model="rawText" class="input min-h-[110px]" placeholder="الاسم، الرقم الوطني، رقم اللوحة، رقم الشاصي، تاريخ النفاذ..."></textarea>
             </FormField>
             <button class="btn-secondary btn w-full" @click="parseManual">تحليل النص اليدوي</button>
@@ -123,6 +128,9 @@ const autoMode = ref(true)
 const countdown = ref(0)
 const countdownTimer = ref<any>(null)
 const analyzing = ref(false)
+const ocrProgress = ref('')
+const ocrPercent = ref(0)
+const ocrCache = reactive<Record<string, string>>({})
 
 const title = computed(()=> props.type === 'car' ? 'فحص سريع للسنوية' : 'فحص سريع لهوية العميل')
 const subtitle = computed(()=> props.type === 'car'
@@ -132,7 +140,7 @@ const frontLabel = computed(()=> props.type === 'car' ? 'وجه السنوية' 
 const backLabel = computed(()=> props.type === 'car' ? 'ظهر السنوية' : 'ظهر الهوية')
 const currentImage = computed(()=> side.value === 'front' ? images.front : images.back)
 const statusText = computed(()=> {
-  if (analyzing.value) return 'جاري تحليل الصورة واستخراج البيانات...'
+  if (analyzing.value) return ocrProgress.value || 'جاري تحليل الصورة واستخراج البيانات...'
   if (countdown.value > 0) return 'ثبّت المستمسك داخل الإطار، سيتم الالتقاط تلقائياً'
   if (currentImage.value) return 'تم حفظ هذه الجهة'
   if (cameraOn.value) return 'قرّب المستمسك واجعل الكتابة واضحة'
@@ -240,14 +248,26 @@ function cropDocumentArea(source:HTMLCanvasElement){
 
 function enhanceCanvas(source:HTMLCanvasElement){
   const cropped = cropDocumentArea(source)
-  const maxW = 1800
-  const scale = Math.min(1, maxW / cropped.width)
+  const maxW = 2200
+  const scale = Math.min(2.2, Math.max(1.25, maxW / cropped.width))
   const c = document.createElement('canvas')
   c.width = Math.max(1, Math.round(cropped.width * scale))
   c.height = Math.max(1, Math.round(cropped.height * scale))
   const ctx = c.getContext('2d')!
-  ctx.filter = 'contrast(1.22) saturate(1.04) brightness(1.08)'
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.filter = 'contrast(1.38) saturate(1.02) brightness(1.12)'
   ctx.drawImage(cropped,0,0,c.width,c.height)
+
+  // تحسين مجاني للـ OCR: تحويل رمادي + زيادة التباين دون حذف ألوان المستمسك من الصورة المحفوظة.
+  const img = ctx.getImageData(0, 0, c.width, c.height)
+  const d = img.data
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]
+    const v = Math.max(0, Math.min(255, (g - 118) * 1.55 + 128))
+    d[i] = d[i+1] = d[i+2] = v
+  }
+  ctx.putImageData(img, 0, 0)
   return c
 }
 
@@ -288,31 +308,82 @@ async function onFile(e:any){
 
 async function analyzeSavedImages(useApi=true){
   analyzing.value = true
+  ocrProgress.value = 'تهيئة الفحص المجاني...'
+  ocrPercent.value = 5
   try {
     const imgs = [images.front, images.back].filter(Boolean)
     let mergedText = ''
-    for (const img of imgs) {
+
+    for (let i = 0; i < imgs.length; i++) {
+      const img = imgs[i]
       const c = await imageToCanvas(img)
+      ocrProgress.value = `فحص الرموز ${i + 1} من ${imgs.length}`
+      ocrPercent.value = Math.max(8, Math.round((i / Math.max(1, imgs.length)) * 20))
       const code = await readBarcode(c)
       if(code) mergedText += '\n' + code
+
+      const ocr = await readTextWithFreeOcr(img, i)
+      if (ocr) mergedText += '\n' + ocr
     }
+
     if (mergedText.trim()) rawText.value = normalize(`${rawText.value}\n${mergedText}`)
 
+    // لا نعتمد على OpenAI هنا إلا إذا كان مربوطاً، والتحليل المحلي المجاني يبقى أساسياً.
     if(useApi && imgs.length){
       try{
         const result:any = await $fetch('/api/scan/document', { method:'POST', body:{ type: props.type, frontImage: images.front || '', backImage: images.back || '', barcodeText: rawText.value || '' } })
         if(result?.rawText) rawText.value = normalize(`${rawText.value}\n${result.rawText}`)
         if(result?.fields) Object.assign(draft, cleanReturnedFields(result.fields))
-        if(result?.message) notify(result.message, result.usedAI ? 'ok' : 'error')
+        if(result?.usedAI && result?.message) notify(result.message, 'ok')
       } catch(e:any){
-        // لا نوقف العملية؛ نكمل بالتحليل المحلي.
-        if(e?.data?.message) notify(e.data.message, 'error')
+        // تجاهل فشل API حتى يبقى OCR المجاني يعمل دائماً.
       }
     }
+
     parseText(rawText.value)
+    ensureUsefulFallback(rawText.value)
+    const filled = Object.values(draft).filter(v => String(v || '').trim()).length
+    if (filled > 1) notify('تمت قراءة البيانات المتاحة مجاناً. راجع النتائج ثم احفظها.')
+    else notify('تم حفظ الصور. القراءة المجانية تحتاج صورة أوضح؛ قرب المستمسك وكرر الفحص أو عدّل النص يدوياً.', 'error')
   } finally {
     analyzing.value = false
+    setTimeout(()=>{ ocrProgress.value=''; ocrPercent.value=0 }, 600)
   }
+}
+
+async function readTextWithFreeOcr(image:string, index:number){
+  try{
+    if (ocrCache[image]) return ocrCache[image]
+    ocrProgress.value = `قراءة النص OCR مجاني ${index + 1}`
+    ocrPercent.value = Math.min(85, 25 + index * 25)
+
+    const mod:any = await import('tesseract.js')
+    const recognize = mod.recognize || mod.default?.recognize
+    if (!recognize) return ''
+
+    const result = await recognize(image, 'ara+eng', {
+      logger: (m:any) => {
+        if (m?.status) ocrProgress.value = `OCR: ${arabicOcrStatus(m.status)}`
+        if (typeof m?.progress === 'number') ocrPercent.value = Math.max(12, Math.min(95, Math.round(m.progress * 100)))
+      }
+    })
+    const text = normalize(result?.data?.text || '')
+    ocrCache[image] = text
+    return text
+  }catch(e){
+    return ''
+  }
+}
+
+function arabicOcrStatus(s:string){
+  const map:any = {
+    'loading tesseract core': 'تحميل محرك القراءة',
+    'initializing tesseract': 'تهيئة المحرك',
+    'loading language traineddata': 'تحميل العربية والإنجليزية',
+    'initializing api': 'تهيئة القراءة',
+    'recognizing text': 'قراءة النص من المستمسك'
+  }
+  return map[s] || s
 }
 
 function cleanReturnedFields(obj:any){
@@ -331,16 +402,30 @@ async function readBarcode(canvas:HTMLCanvasElement){
   }catch(e){ return '' }
 }
 
-function parseManual(){ parseText(rawText.value); notify('تم تحليل النص المتاح') }
-function normalize(t:string){ return String(t||'').replace(/\r/g,'\n').replace(/[：]/g,':').replace(/\s{2,}/g,' ').trim() }
+function parseManual(){ parseText(rawText.value); ensureUsefulFallback(rawText.value); notify('تم تحليل النص المتاح') }
+function normalize(t:string){
+  return String(t||'')
+    .replace(/\r/g,'\n')
+    .replace(/[：]/g,':')
+    .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[|]+/g,' ')
+    .replace(/\s{2,}/g,' ')
+    .trim()
+}
 function valueAfter(text:string, labels:string[]){
+  const lines = text.split(/\n|\r| {2,}/).map(x=>x.trim()).filter(Boolean)
   for(const label of labels){
-    const re = new RegExp(`${label}\\s*[:：-]?\\s*([^\\n|،,]+)`, 'i')
+    const re = new RegExp(`${escapeRegex(label)}\\s*[:：\\-،]?\\s*([^\\n|،,]+)`, 'i')
     const m = text.match(re)
-    if(m?.[1]) return m[1].trim()
+    if(m?.[1]) return cleanupValue(m[1])
+    const idx = lines.findIndex(l => l.toLowerCase().includes(label.toLowerCase()))
+    if(idx >= 0 && lines[idx+1]) return cleanupValue(lines[idx+1])
   }
   return ''
 }
+function escapeRegex(v:string){ return v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+function cleanupValue(v:string){ return String(v||'').replace(/^[\s:：\-،]+|[\s:：\-،]+$/g,'').replace(/\s{2,}/g,' ').trim() }
 function firstYear(text:string){ return text.match(/\b(19[8-9]\d|20[0-4]\d)\b/)?.[1] || '' }
 function cleanDigits(v:string){ return String(v||'').replace(/[^0-9A-Za-z\/-]/g,'').trim() }
 function parseMrzName(t:string){
@@ -348,27 +433,90 @@ function parseMrzName(t:string){
   if(!line.includes('<<')) return ''
   return line.split('<<').slice(1).join(' ').replace(/</g,' ').replace(/\s+/g,' ').trim()
 }
+function extractLongNumbers(t:string){
+  return Array.from(new Set((t.match(/\b\d{6,14}\b/g) || []).map(x=>x.trim())))
+}
+function extractPhone(t:string){ return t.match(/(?:\+?964|0)?7\d{9}\b/)?.[0] || '' }
+function likelyEnglishName(t:string){
+  const bad = /REPUBLIC|IRAQ|IDENTITY|CARD|MINISTRY|VEHICLE|REGISTRATION|LICENSE|DATE|EXPIR|BIRTH|NATIONAL|DIRECTORATE|TRAFFIC|SPECIMEN|PRIVATE/i
+  const lines = t.split(/\n/).map(l=>l.trim()).filter(l => l.length >= 6 && /[A-Z]{3,}/.test(l) && !bad.test(l))
+  const line = lines.find(l => /^[A-Z\s'.-]{8,}$/.test(l)) || ''
+  return cleanupValue(line)
+}
+function likelyArabicName(t:string){
+  const bad = /جمهورية|العراق|وزارة|الداخلية|البطاقة|الوطنية|هوية|تسجيل|مركبة|اجازة|المرور|مديرية|النوع|الجنس|تاريخ|اصدار|نفاذ|الرقم|محل|السكن/
+  const lines = t.split(/\n/).map(l=>l.trim()).filter(l => /[\u0600-\u06FF]/.test(l) && l.length >= 7 && !bad.test(l))
+  return cleanupValue(lines.find(l => l.split(/\s+/).length >= 2) || '')
+}
+function extractAddress(t:string){
+  return valueAfter(t, ['العنوان','عنوان السكن','محل السكن','السكن','المحافظة','ناحية','قضاء','زقاق','محلة'])
+}
+function extractVin(t:string){ return (t.toUpperCase().match(/\b[A-HJ-NPR-Z0-9]{17}\b/) || [])[0] || '' }
+function extractPlate(t:string){
+  const u = t.toUpperCase()
+  return u.match(/\b[A-Z]{1,3}\s?\d{4,8}\b/)?.[0]?.replace(/\s+/g,'') || u.match(/\b\d{5,10}\b/)?.[0] || ''
+}
+function detectCarBrand(t:string){
+  const u = t.toUpperCase()
+  const brands = ['TOYOTA','BMW','KIA','HYUNDAI','NISSAN','CHEVROLET','FORD','MERCEDES','LEXUS','HONDA','MITSUBISHI','GMC','JEEP','DODGE','CHRYSLER','VOLKSWAGEN','AUDI','MAZDA','SUZUKI','RENAULT','PEUGEOT','RANGE ROVER','LAND ROVER']
+  const found = brands.find(b => u.includes(b))
+  const ar:any = {'تويوتا':'TOYOTA','بي ام':'BMW','كيا':'KIA','هونداي':'HYUNDAI','هيونداي':'HYUNDAI','نيسان':'NISSAN','شفر':'CHEVROLET','مرسيدس':'MERCEDES','لكزس':'LEXUS','هوندا':'HONDA','ميتسوبيشي':'MITSUBISHI','جمس':'GMC','جيب':'JEEP'}
+  const arKey = Object.keys(ar).find(k => t.includes(k))
+  return found || (arKey ? ar[arKey] : '')
+}
+function detectColor(t:string){
+  const colors:any = {'ابيض':'أبيض','أبيض':'أبيض','اسود':'أسود','أسود':'أسود','احمر':'أحمر','أحمر':'أحمر','ازرق':'أزرق','أزرق':'أزرق','رصاصي':'رصاصي','فضي':'فضي','سلفر':'فضي','رمادي':'رمادي','اخضر':'أخضر','أخضر':'أخضر','بيج':'بيج','بني':'بني','white':'أبيض','black':'أسود','red':'أحمر','blue':'أزرق','silver':'فضي','gray':'رمادي','grey':'رمادي'}
+  const lower = t.toLowerCase()
+  for (const k of Object.keys(colors)) if (lower.includes(k.toLowerCase())) return colors[k]
+  return ''
+}
+function ensureUsefulFallback(t:string){
+  const text = normalize(t)
+  if(props.type==='car'){
+    if(!draft.description && text) draft.description = `نص السنوية المقروء: ${text.slice(0,700)}`
+    if(!draft.brand) draft.brand = detectCarBrand(text)
+    if(!draft.plateNumber) draft.plateNumber = extractPlate(text)
+    if(!draft.vinNumber) draft.vinNumber = extractVin(text)
+    if(!draft.year) draft.year = firstYear(text)
+    if(!draft.color) draft.color = detectColor(text)
+  }else{
+    const nums = extractLongNumbers(text)
+    if(!draft.fullName) draft.fullName = likelyArabicName(text) || likelyEnglishName(text) || parseMrzName(text.toUpperCase())
+    if(!draft.nationalId && nums.length) draft.nationalId = nums.sort((a,b)=>b.length-a.length)[0]
+    if(!draft.phone) draft.phone = extractPhone(text)
+    if(!draft.address) draft.address = extractAddress(text)
+    if(!draft.notes && text) draft.notes = `نص الهوية المقروء: ${text.slice(0,700)}`
+  }
+}
+
 function parseText(input:string){
   const t = normalize(input)
   const upper = t.toUpperCase()
   if(props.type==='car'){
-    draft.brand = valueAfter(t,['الشركة','شركة السيارة','الماركة','brand','make','vehicle make']) || draft.brand
-    draft.model = valueAfter(t,['الموديل','النوع','اسم السيارة','model','vehicle','vehicle type','class']) || draft.model
+    draft.brand = valueAfter(t,['الشركة','شركة السيارة','الماركة','الصنع','brand','make','vehicle make']) || detectCarBrand(t) || draft.brand
+    draft.model = valueAfter(t,['الموديل','الطراز','النوع','اسم السيارة','model','vehicle','vehicle type','class']) || draft.model
     draft.year = valueAfter(t,['السنة','سنة الصنع','year','model year']) || firstYear(t) || draft.year
-    draft.color = valueAfter(t,['اللون','color']) || draft.color
-    draft.plateNumber = valueAfter(t,['رقم اللوحة','اللوحة','plate','plate number','registration','registration no']) || draft.plateNumber
-    draft.vinNumber = valueAfter(t,['رقم الشاصي','الشاصي','vin','vin number','chassis','chassis no']) || draft.vinNumber
+    draft.color = valueAfter(t,['اللون','color']) || detectColor(t) || draft.color
+    draft.plateNumber = valueAfter(t,['رقم اللوحة','اللوحة','رقم التسجيل','plate','plate number','registration','registration no']) || extractPlate(t) || draft.plateNumber
+    draft.vinNumber = valueAfter(t,['رقم الشاصي','الشاصي','رقم الهيكل','vin','vin number','chassis','chassis no']) || extractVin(t) || draft.vinNumber
     draft.mileage = valueAfter(t,['العداد','الممشى','mileage','odometer']) || draft.mileage
-    const plate = upper.match(/[A-Z]{1,3}\d{5,}/)?.[0] || upper.match(/\b\d{5,10}\b/)?.[0] || ''
-    if(!draft.plateNumber && plate) draft.plateNumber = plate
-    draft.description = t ? `فحص السنوية: ${t.slice(0,500)}${images.front?' | صورة الوجه محفوظة':''}${images.back?' | صورة الظهر محفوظة':''}` : draft.description
+    const descParts = []
+    if (t) descParts.push(`نص السنوية المقروء: ${t.slice(0,700)}`)
+    if (images.front) descParts.push('صورة وجه السنوية محفوظة')
+    if (images.back) descParts.push('صورة ظهر السنوية محفوظة')
+    draft.description = descParts.join(' | ') || draft.description
   } else {
-    draft.fullName = valueAfter(t,['الاسم الكامل','اسم العميل','الاسم','name','full name','surname','given names']) || parseMrzName(upper) || draft.fullName
-    draft.nationalId = valueAfter(t,['الرقم الوطني','رقم الهوية','national id','id number','document no','national no']) || cleanDigits(t.match(/\b\d{8,14}\b/)?.[0] || '') || draft.nationalId
-    draft.phone = valueAfter(t,['الهاتف','رقم الهاتف','phone','mobile']) || draft.phone
+    draft.fullName = valueAfter(t,['الاسم الكامل','اسم العميل','الاسم','اسم','name','full name','surname','given names']) || likelyArabicName(t) || likelyEnglishName(t) || parseMrzName(upper) || draft.fullName
+    const nums = extractLongNumbers(t)
+    draft.nationalId = valueAfter(t,['الرقم الوطني','رقم الهوية','رقم البطاقة','national id','id number','document no','national no']) || (nums.length ? nums.sort((a,b)=>b.length-a.length)[0] : '') || draft.nationalId
+    draft.phone = valueAfter(t,['الهاتف','رقم الهاتف','phone','mobile']) || extractPhone(t) || draft.phone
     draft.phone2 = valueAfter(t,['هاتف ثاني','رقم إضافي','phone2']) || draft.phone2
-    draft.address = valueAfter(t,['العنوان','السكن','address','place of birth','المحل']) || draft.address
-    draft.notes = t ? `فحص الهوية: ${t.slice(0,500)}${images.front?' | صورة الوجه محفوظة':''}${images.back?' | صورة الظهر محفوظة':''}` : draft.notes
+    draft.address = valueAfter(t,['العنوان','عنوان السكن','السكن','محل السكن','address','place of birth','المحل']) || extractAddress(t) || draft.address
+    const noteParts = []
+    if (t) noteParts.push(`نص الهوية المقروء: ${t.slice(0,700)}`)
+    if (images.front) noteParts.push('صورة وجه الهوية محفوظة')
+    if (images.back) noteParts.push('صورة ظهر الهوية محفوظة')
+    draft.notes = noteParts.join(' | ') || draft.notes
   }
 }
 function apply(){
@@ -384,7 +532,7 @@ function apply(){
 .scan-overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.78);display:grid;place-items:center;padding:18px}
 .scan-sheet{width:min(1160px,100%);max-height:94vh;overflow:auto;padding:22px}
 .scan-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}.scan-title{font-size:1.65rem;font-weight:950}
-.scan-message{margin-bottom:12px;border-radius:18px;border:1px solid;padding:12px;font-size:.9rem;font-weight:900}.scan-message.ok{border-color:rgba(16,185,129,.4);color:#10b981}.scan-message.error{border-color:rgba(239,68,68,.42);color:#ef4444}
+.scan-message{margin-bottom:12px;border-radius:18px;border:1px solid;padding:12px;font-size:.9rem;font-weight:900}.scan-ocr-progress{margin-bottom:12px;border:1px solid var(--border);background:rgba(255,255,255,.04);border-radius:18px;padding:10px 12px;color:var(--muted);font-weight:900;font-size:.85rem}.scan-ocr-bar{margin-top:8px;height:7px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.scan-ocr-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#22c55e);transition:width .25s ease}.scan-message.ok{border-color:rgba(16,185,129,.4);color:#10b981}.scan-message.error{border-color:rgba(239,68,68,.42);color:#ef4444}
 .scan-progress{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}.scan-step{display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border);background:rgba(255,255,255,.04);border-radius:18px;padding:12px;font-weight:900;color:var(--muted)}.scan-step span{width:28px;height:28px;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.07);font-size:.78rem}.scan-step.active{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:white;box-shadow:0 16px 35px rgba(37,99,235,.25)}
 .scan-layout{display:grid;grid-template-columns:1.35fr .65fr;gap:16px}.scan-camera{padding:12px}.scan-frame{position:relative;overflow:hidden;border-radius:26px;background:#020817}.scan-video{width:100%;height:min(62vh,520px);border-radius:24px;background:#020817;border:1px solid var(--border);object-fit:cover}.scan-placeholder{height:min(62vh,520px);border-radius:24px;border:1px dashed var(--border);display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}.scan-placeholder b{font-size:1.3rem;color:var(--text)}.scan-placeholder span{max-width:420px}.scan-lens{width:72px;height:72px;border-radius:24px;border:2px solid rgba(59,130,246,.7);box-shadow:0 0 35px rgba(59,130,246,.35)}
 .scan-guide{pointer-events:none;position:absolute;inset:0}.scan-card-outline{position:absolute;left:6%;right:6%;top:17%;bottom:18%;border:3px solid rgba(255,255,255,.72);border-radius:24px;box-shadow:0 0 0 999px rgba(0,0,0,.16), inset 0 0 28px rgba(37,99,235,.12)}.scan-line{position:absolute;left:9%;right:9%;top:22%;height:3px;border-radius:999px;background:linear-gradient(90deg,transparent,#22c55e,transparent);opacity:.85}.scan-line.move{animation:scanLine 2.3s linear infinite}@keyframes scanLine{0%{top:22%}50%{top:74%}100%{top:22%}}
