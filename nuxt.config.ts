@@ -23,7 +23,8 @@ export default defineNuxtConfig({
     jwtSecret: process.env.JWT_SECRET || 'change-this-secret',
     public: {
       appName: 'AutoDealer Pro',
-      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+      oneSignalAppId: process.env.NUXT_PUBLIC_ONESIGNAL_APP_ID || ''
     }
   },
   vite: {

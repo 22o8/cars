@@ -143,6 +143,7 @@
 const auth = useAuthStore()
 const route = useRoute()
 const { theme, initTheme, toggleTheme } = useTheme()
+const { $oneSignal } = useNuxtApp() as any
 const showMobileMenu = ref(false)
 const canInstall = ref(false)
 const deferredPrompt = ref<any>(null)
@@ -153,11 +154,11 @@ let lastNotifiedKey = ''
 // إذا تريد تغييره مستقبلاً عدّل الرقم هنا، وغيّر أيضاً INSTALLMENT_ALERT_REPEAT_MINUTES في Vercel للـ Push خارج البرنامج.
 const INSTALLMENT_ALERT_REPEAT_MS = 5 * 60 * 1000
 
-onMounted(() => {
+onMounted(async () => {
   initTheme()
   notificationStatus.value = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission as any
   window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt as any)
-  if (notificationStatus.value === 'granted') startNotificationPolling(true)
+  if (auth.user?.id) await $oneSignal?.login(auth.user.id)
 })
 
 onBeforeUnmount(() => {
@@ -166,7 +167,7 @@ onBeforeUnmount(() => {
 })
 
 watch(() => route.fullPath, () => { showMobileMenu.value = false })
-watch(() => auth.user?.id, (id) => { if (id && notificationStatus.value === 'granted') startNotificationPolling() })
+watch(() => auth.user?.id, async (id) => { if (id) await $oneSignal?.login(id) })
 
 function onBeforeInstallPrompt(e: Event) {
   e.preventDefault()
@@ -182,26 +183,26 @@ const notificationButtonText = computed(() => {
 })
 
 async function enableNotifications() {
-  if (typeof Notification === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-    alert('هذا الجهاز أو المتصفح لا يدعم إشعارات Push الكاملة. جرّب Chrome أو Edge وثبّت التطبيق على الهاتف.')
-    notificationStatus.value = 'unsupported'
+  if (!$oneSignal?.configured) {
+    alert('OneSignal غير مضبوط. أضف NUXT_PUBLIC_ONESIGNAL_APP_ID و ONESIGNAL_REST_API_KEY داخل Vercel ثم أعد النشر.')
     return
   }
-  if (Notification.permission !== 'granted') {
-    const result = await Notification.requestPermission()
-    notificationStatus.value = result as any
-  } else {
-    notificationStatus.value = 'granted'
+  if (typeof Notification === 'undefined') {
+    notificationStatus.value = 'unsupported'
+    alert('هذا المتصفح لا يدعم إشعارات الهاتف.')
+    return
   }
-  if (notificationStatus.value === 'granted') {
-    const ok = await subscribePushNotifications()
-    if (ok) {
-      await $fetch('/api/push/test', { method: 'POST', credentials: 'include' }).catch(() => null)
-      startNotificationPolling(true)
-      alert('تم تفعيل إشعارات الهاتف بنجاح. ستصلك تنبيهات الأقساط حتى إذا كان البرنامج مغلقاً عند تفعيل Cron في Vercel.')
-    }
-  } else if (notificationStatus.value === 'denied') {
-    alert('الإشعارات محظورة من المتصفح. فعّلها من إعدادات الموقع حتى تصلك تنبيهات الأقساط.')
+
+  const result = await $oneSignal.requestPermission(auth.user?.id)
+  notificationStatus.value = Notification.permission as any
+
+  if (result?.ok || Notification.permission === 'granted') {
+    await $fetch('/api/onesignal/test', { method: 'POST', credentials: 'include' }).catch(() => null)
+    alert('تم تفعيل إشعارات الهاتف بنجاح. ستصلك تنبيهات الأقساط عبر OneSignal حتى خارج البرنامج.')
+  } else if (Notification.permission === 'denied') {
+    alert('الإشعارات محظورة من المتصفح. فعّلها من إعدادات الموقع.')
+  } else {
+    alert('لم يتم منح صلاحية الإشعارات بعد.')
   }
 }
 
@@ -335,6 +336,7 @@ const mobileBottomMenu = computed(() => {
 const isMobileHeaderReady = computed(() => auth.user && mobilePrimaryMenu.value.length > 0)
 const pageTitle = computed(() => flat.value.find((i:any) => route.path === i.to || route.path.startsWith(i.to + '/'))?.label || 'AutoDealer Pro')
 async function logout() {
+  await $oneSignal?.logout?.()
   await $fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
   auth.user = null
   auth.initialized = true
