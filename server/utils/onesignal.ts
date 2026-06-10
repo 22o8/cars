@@ -1,11 +1,25 @@
 import { prisma } from './db'
 
+function env(name: string) {
+  return String(process.env[name] || '').trim().replace(/^['\"]|['\"]$/g, '')
+}
+
 export function oneSignalConfigured() {
-  return Boolean(process.env.NUXT_PUBLIC_ONESIGNAL_APP_ID && process.env.ONESIGNAL_REST_API_KEY)
+  return Boolean(env('NUXT_PUBLIC_ONESIGNAL_APP_ID') && env('ONESIGNAL_REST_API_KEY'))
 }
 
 export function oneSignalAppId() {
-  return process.env.NUXT_PUBLIC_ONESIGNAL_APP_ID || ''
+  return env('NUXT_PUBLIC_ONESIGNAL_APP_ID')
+}
+
+export function oneSignalKeyStatus() {
+  const key = env('ONESIGNAL_REST_API_KEY')
+  return {
+    appIdSet: Boolean(oneSignalAppId()),
+    restKeySet: Boolean(key),
+    restKeyPrefix: key ? `${key.slice(0, 10)}...` : '',
+    restKeyLength: key.length
+  }
 }
 
 export function installmentAlertRepeatMinutes() {
@@ -13,43 +27,57 @@ export function installmentAlertRepeatMinutes() {
   // غيّر INSTALLMENT_ALERT_REPEAT_MINUTES في Vercel Environment Variables.
   // القيمة الافتراضية للتجربة: 5 دقائق.
   // للإنتاج اليومي استخدم 1440 حتى يكرر التنبيه مرة كل يوم.
-  const value = Number(process.env.INSTALLMENT_ALERT_REPEAT_MINUTES || 5)
-  if (!Number.isFinite(value) || value < 1) return 5
+  const value = Number(env('INSTALLMENT_ALERT_REPEAT_MINUTES') || 1440)
+  if (!Number.isFinite(value) || value < 1) return 1440
   return Math.floor(value)
 }
 
-function oneSignalAuthHeader() {
-  const key = process.env.ONESIGNAL_REST_API_KEY || ''
-  // مفاتيح OneSignal الجديدة تبدأ غالباً بـ os_v2_app وتحتاج Authorization: Key
-  // المفاتيح القديمة Legacy تقبل Authorization: Basic
-  return key.startsWith('os_v2_') ? `Key ${key}` : `Basic ${key}`
+function oneSignalAuthHeaders() {
+  const key = env('ONESIGNAL_REST_API_KEY')
+  // OneSignal v2 يستخدم Key، وبعض Legacy تقبل Basic. نجرب الاثنين بدون كشف المفتاح في الرد.
+  return key.startsWith('os_v2_') ? [`Key ${key}`, `Basic ${key}`] : [`Basic ${key}`, `Key ${key}`]
 }
 
 async function sendOneSignalNotification(payload: any) {
   if (!oneSignalConfigured()) return { ok: false, sent: 0, failed: 0, reason: 'not-configured' }
 
   const body = {
-    app_id: process.env.NUXT_PUBLIC_ONESIGNAL_APP_ID,
+    app_id: oneSignalAppId(),
     target_channel: 'push',
     ...payload
   }
 
-  // endpoint الجديد هو api.onesignal.com/notifications، أما onesignal.com/api/v1 قد لا يعمل مع os_v2_app
-  const res = await fetch('https://api.onesignal.com/notifications', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json; charset=utf-8',
-      Authorization: oneSignalAuthHeader()
-    },
-    body: JSON.stringify(body)
-  })
+  let last: any = null
+  for (const authorization of oneSignalAuthHeaders()) {
+    const res = await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
+        Authorization: authorization
+      },
+      body: JSON.stringify(body)
+    })
 
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { ok: false, sent: 0, failed: 1, status: res.status, data, request: body }
+    const data = await res.json().catch(() => ({}))
+    last = { status: res.status, data }
+    if (res.ok) {
+      const recipients = Number(data?.recipients || 0)
+      return { ok: true, sent: recipients, failed: 0, data }
+    }
 
-  const recipients = Number(data?.recipients || 0)
-  return { ok: true, sent: recipients, failed: 0, data, request: body }
+    // جرّب صيغة Authorization الثانية فقط في حالة رفض المفتاح.
+    if (![401, 403].includes(res.status)) break
+  }
+
+  return {
+    ok: false,
+    sent: 0,
+    failed: 1,
+    status: last?.status,
+    data: last?.data,
+    hint: 'تحقق أن ONESIGNAL_REST_API_KEY هو REST API Key الكامل وليس Key ID، وأنه مربوط بنفس App ID.'
+  }
 }
 
 export async function sendOneSignalToUsers(userIds: string[], title: string, body: string, url = '/', tag?: string) {
@@ -91,7 +119,7 @@ export async function sendOneSignalToAll(title: string, body: string, url = '/',
 async function sendWithFallbackToAll(userIds: string[], title: string, body: string, url: string, tag: string) {
   // افتراضياً نرسل لكل المشتركين لأن حسابات OneSignal الموجودة عندك مسجلة External ID مختلف عن id قاعدة البيانات.
   // إذا تريد ربط صارم حسب الموظف فقط، ضع ONESIGNAL_STRICT_USER_TARGETING=true في Vercel.
-  if (process.env.ONESIGNAL_STRICT_USER_TARGETING !== 'true') {
+  if (env('ONESIGNAL_STRICT_USER_TARGETING') !== 'true') {
     return sendOneSignalToAll(title, body, url, tag)
   }
 
@@ -99,7 +127,7 @@ async function sendWithFallbackToAll(userIds: string[], title: string, body: str
   if ((byUser.sent || 0) > 0 || byUser.failed) return byUser
 
   // fallback يمنع حالة No recipients إذا كان external_id غير مطابق.
-  if (process.env.ONESIGNAL_FALLBACK_TO_ALL !== 'false') {
+  if (env('ONESIGNAL_FALLBACK_TO_ALL') !== 'false') {
     return sendOneSignalToAll(title, body, url, `${tag}-all`)
   }
   return byUser
@@ -111,7 +139,7 @@ export async function sendDueInstallmentOneSignalAlerts() {
   const repeatMs = repeatMinutes * 60 * 1000
   const bucket = Math.floor(now.getTime() / repeatMs)
 
-  const keepDays = Number(process.env.NOTIFICATION_DELIVERY_KEEP_DAYS || 30)
+  const keepDays = Number(env('NOTIFICATION_DELIVERY_KEEP_DAYS') || 30)
   if (Number.isFinite(keepDays) && keepDays > 0) {
     const cutoff = new Date(now.getTime() - keepDays * 24 * 60 * 60 * 1000)
     await prisma.notificationDelivery.deleteMany({ where: { sentAt: { lt: cutoff } } }).catch(() => null)
@@ -175,7 +203,7 @@ export async function sendDueInstallmentOneSignalAlerts() {
     provider: 'onesignal',
     configured: oneSignalConfigured(),
     repeatMinutes,
-    targeting: process.env.ONESIGNAL_STRICT_USER_TARGETING === 'true' ? 'external-user-id' : 'all-subscribed-users',
+    targeting: env('ONESIGNAL_STRICT_USER_TARGETING') === 'true' ? 'external-user-id' : 'all-subscribed-users',
     installments: installments.length,
     users: targetUsers.length,
     checked,
