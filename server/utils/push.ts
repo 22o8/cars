@@ -35,37 +35,68 @@ export async function sendPushToUser(userId: string, payload: any) {
   return { sent, failed, configured: true }
 }
 
+export function installmentAlertRepeatMinutes() {
+  // غيّر قيمة INSTALLMENT_ALERT_REPEAT_MINUTES في Vercel أو .env لتعديل مدة تكرار إرسال إشعار القسط.
+  // القيمة الافتراضية حالياً: كل 5 دقائق.
+  const value = Number(process.env.INSTALLMENT_ALERT_REPEAT_MINUTES || 5)
+  if (!Number.isFinite(value) || value < 1) return 5
+  return Math.floor(value)
+}
+
 export async function sendDueInstallmentPushes() {
   const now = new Date()
+  const repeatMinutes = installmentAlertRepeatMinutes()
+  const repeatMs = repeatMinutes * 60 * 1000
+  const bucket = Math.floor(now.getTime() / repeatMs)
+
+  // تنظيف قديم حتى لا يكبر سجل الإشعارات بلا داعي.
+  const keepDays = Number(process.env.NOTIFICATION_DELIVERY_KEEP_DAYS || 30)
+  if (Number.isFinite(keepDays) && keepDays > 0) {
+    const cutoff = new Date(now.getTime() - keepDays * 24 * 60 * 60 * 1000)
+    await prisma.notificationDelivery.deleteMany({ where: { sentAt: { lt: cutoff } } }).catch(() => null)
+  }
+
   const installments = await prisma.installment.findMany({
     where: { status: { not: 'PAID' }, dueDate: { lte: now } },
     include: { sale: { include: { customer: true, car: true, soldBy: true } } },
     orderBy: { dueDate: 'asc' }
   })
+
+  const users = await prisma.user.findMany({ where: { active: true } })
   let checked = 0
   let sent = 0
   let failed = 0
+  let skipped = 0
+
   for (const i of installments) {
-    const dueDay = i.dueDate.toISOString().slice(0, 10)
-    const tag = `installment-${i.id}-${dueDay}`
-    const users = await prisma.user.findMany({ where: { active: true } })
+    const remaining = Math.max(0, Number(i.amount) - Number(i.paidAmount))
+    const dueDate = i.dueDate.toLocaleDateString('ar-IQ')
+    // هذا الـ tag يتغير كل فترة تكرار، لذلك نفس القسط يعاد تنبيهه كل 5 دقائق افتراضياً.
+    const tag = `installment-due-${i.id}-${bucket}`
+
     for (const user of users) {
       const exists = await prisma.notificationDelivery.findUnique({ where: { userId_tag: { userId: user.id, tag } } }).catch(() => null)
-      if (exists) continue
+      if (exists) { skipped++; continue }
       checked++
+
+      const title = 'تنبيه موعد تسديد قسط'
+      const body = `${i.sale.customer.fullName} - ${i.sale.car.brand} ${i.sale.car.model} - المتبقي ${remaining.toLocaleString('en-US')} - الاستحقاق ${dueDate}`
       const result = await sendPushToUser(user.id, {
-        title: 'قسط مستحق أو متأخر',
-        body: `${i.sale.customer.fullName} - ${i.sale.car.brand} ${i.sale.car.model} - المتبقي ${Number(i.amount) - Number(i.paidAmount)}`,
+        title,
+        body,
         tag,
         url: '/installments',
-        requireInteraction: true
+        requireInteraction: true,
+        timestamp: now.toISOString()
       })
       sent += result.sent
       failed += result.failed
-      if (result.sent > 0) {
-        await prisma.notificationDelivery.create({ data: { userId: user.id, title: 'قسط مستحق أو متأخر', body: `${i.sale.customer.fullName} - ${i.sale.car.brand} ${i.sale.car.model}`, tag, installmentId: i.id } }).catch(() => null)
-      }
+
+      // حتى إذا لم توجد أجهزة مشتركة، نسجل محاولة الإرسال حتى لا يكرر نفس الـ cron داخل نفس فترة الخمس دقائق.
+      await prisma.notificationDelivery.create({
+        data: { userId: user.id, title, body, tag, installmentId: i.id }
+      }).catch(() => null)
     }
   }
-  return { installments: installments.length, checked, sent, failed, configured: pushConfigured() }
+  return { installments: installments.length, users: users.length, checked, skipped, sent, failed, configured: pushConfigured(), repeatMinutes }
 }

@@ -149,6 +149,9 @@ const deferredPrompt = ref<any>(null)
 const notificationStatus = ref<'unsupported' | 'default' | 'granted' | 'denied'>('default')
 let notificationTimer: any = null
 let lastNotifiedKey = ''
+// مكان تعديل تكرار تنبيه الأقساط داخل المتصفح: 5 دقائق.
+// إذا تريد تغييره مستقبلاً عدّل الرقم هنا، وغيّر أيضاً INSTALLMENT_ALERT_REPEAT_MINUTES في Vercel للـ Push خارج البرنامج.
+const INSTALLMENT_ALERT_REPEAT_MS = 5 * 60 * 1000
 
 onMounted(() => {
   initTheme()
@@ -251,15 +254,16 @@ function startNotificationPolling(runNow = false) {
       const count = due?.length || 0
       if (!count) return
       const first = due[0]
-      const key = `${count}-${first?.id || ''}-${new Date().toDateString()}`
+      const bucket = Math.floor(Date.now() / INSTALLMENT_ALERT_REPEAT_MS)
+      const key = `${count}-${first?.id || ''}-${bucket}`
       if (key === lastNotifiedKey || localStorage.getItem('adp_last_due_notification') === key) return
       lastNotifiedKey = key
       localStorage.setItem('adp_last_due_notification', key)
-      await showSystemNotification('تنبيه أقساط مستحقة', count === 1 ? `يوجد قسط مستحق على ${first?.sale?.customer?.fullName || 'أحد العملاء'}` : `يوجد ${count} أقساط مستحقة أو متأخرة تحتاج متابعة`)
+      await showSystemNotification('تنبيه موعد تسديد قسط', count === 1 ? `يوجد قسط مستحق على ${first?.sale?.customer?.fullName || 'أحد العملاء'}` : `يوجد ${count} أقساط مستحقة أو متأخرة تحتاج متابعة`)
     } catch {}
   }
   if (runNow) check()
-  notificationTimer = setInterval(check, 60_000)
+  notificationTimer = setInterval(check, INSTALLMENT_ALERT_REPEAT_MS)
 }
 
 async function showSystemNotification(title: string, body: string) {
