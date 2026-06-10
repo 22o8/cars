@@ -30,9 +30,9 @@ export function oneSignalKeyStatus() {
 }
 
 export function installmentAlertRepeatMinutes() {
-  // مكان تعديل مدة تكرار إشعار القسط:
+  // مكان تعديل مدة تكرار تنبيه نفس القسط:
   // غيّر INSTALLMENT_ALERT_REPEAT_MINUTES في Vercel Environment Variables.
-  // للإنتاج اليومي على Vercel Hobby استخدم 1440 حتى يكرر التنبيه مرة كل يوم.
+  // على Vercel Hobby استخدم 1440 لأن Cron يعمل يومياً.
   const value = Number(env('INSTALLMENT_ALERT_REPEAT_MINUTES') || 1440)
   if (!Number.isFinite(value) || value < 1) return 1440
   return Math.floor(value)
@@ -40,7 +40,8 @@ export function installmentAlertRepeatMinutes() {
 
 function oneSignalAuthHeaders() {
   const key = env('ONESIGNAL_REST_API_KEY')
-  // OneSignal REST API v2 يستعمل Key. نترك Basic كاحتياط لبعض المفاتيح القديمة.
+  // مفاتيح os_v2 تعمل عادةً مع Authorization: Key
+  // نجرّب Basic كاحتياط فقط.
   return key.startsWith('os_v2_') ? [`Key ${key}`, `Basic ${key}`] : [`Basic ${key}`, `Key ${key}`]
 }
 
@@ -52,13 +53,22 @@ function buildPayload(payload: any) {
     app_id: oneSignalAppId(),
     target_channel: 'push',
     ...cleanPayload,
-    // لا نرسل url مع web_url حتى لا يرجع OneSignal خطأ:
-    // Remove url field when setting app_url or web_url.
     web_url: clickUrl
   }
 }
 
-async function sendOneSignalNotification(payload: any) {
+function normalizeResult(res: Response, data: any) {
+  const recipients = Number(data?.recipients || data?.successful || 0)
+  if (res.ok && data?.id) {
+    return { ok: true, sent: recipients > 0 ? recipients : 1, failed: 0, status: res.status, data }
+  }
+  if (res.ok && recipients > 0) {
+    return { ok: true, sent: recipients, failed: 0, status: res.status, data }
+  }
+  return null
+}
+
+async function postOneSignal(payload: any) {
   if (!oneSignalConfigured()) return { ok: false, sent: 0, failed: 0, reason: 'not-configured' }
 
   const body = buildPayload(payload)
@@ -76,22 +86,13 @@ async function sendOneSignalNotification(payload: any) {
     })
 
     const data = await res.json().catch(() => ({}))
-    const errors = Array.isArray(data?.errors) ? data.errors : []
-    const recipients = Number(data?.recipients || 0)
-    last = { status: res.status, data }
+    last = { status: res.status, data, body: { ...body, app_id: body.app_id ? 'set' : 'missing' } }
 
-    // OneSignal قد يرجع id بدون recipients، أو يرجع id مع external_id=null.
-    // طالما الطلب مقبول وفيه id نعتبره أُرسل حتى لا تبقى sent = 0 رغم وصول الإشعار.
-    if (res.ok && data?.id) {
-      return { ok: true, sent: recipients > 0 ? recipients : 1, failed: 0, status: res.status, data }
-    }
+    const okResult = normalizeResult(res, data)
+    if (okResult) return okResult
 
-    if (res.ok && !errors.length && recipients > 0) {
-      return { ok: true, sent: recipients, failed: 0, status: res.status, data }
-    }
-
-    // إذا قبل OneSignal الطلب ولكن بدون مستلمين أو مع خطأ في الجمهور، نرجعها واضحة.
-    if (res.ok || ![401, 403].includes(res.status)) break
+    // إذا كان الخطأ مصادقة، جرّب صيغة Authorization الثانية.
+    if (![401, 403].includes(res.status)) break
   }
 
   return {
@@ -100,17 +101,74 @@ async function sendOneSignalNotification(payload: any) {
     failed: 1,
     status: last?.status,
     data: last?.data,
-    hint: 'تأكد أن الجهاز Subscribed داخل OneSignal وأن Segment المستخدم موجود.'
+    hint: 'تأكد أن OneSignal App ID و REST API Key صحيحان وأن الجهاز Subscribed.'
   }
+}
+
+async function getSubscribedPlayerIds() {
+  if (!oneSignalConfigured()) return []
+  const appId = oneSignalAppId()
+  const ids: string[] = []
+
+  for (const authorization of oneSignalAuthHeaders()) {
+    const res = await fetch(`https://onesignal.com/api/v1/players?app_id=${encodeURIComponent(appId)}&limit=300`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: authorization
+      }
+    })
+
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) continue
+
+    const players = Array.isArray(data?.players) ? data.players : []
+    for (const p of players) {
+      const id = String(p?.id || '').trim()
+      const subscribed =
+        id &&
+        p?.invalid_identifier !== true &&
+        p?.notification_types !== -2 &&
+        p?.notification_types !== -11 &&
+        p?.notification_types !== 0
+      if (subscribed) ids.push(id)
+    }
+
+    if (ids.length) break
+  }
+
+  return Array.from(new Set(ids))
 }
 
 async function sendOneSignalNotificationWithFallback(payloads: any[]) {
   const attempts: any[] = []
+
+  // 1) إرسال عبر Segments المعروفة
   for (const payload of payloads) {
-    const result: any = await sendOneSignalNotification(payload)
-    attempts.push({ audience: payload.included_segments || payload.include_aliases || payload.include_subscription_ids || payload.filters, result })
+    const result: any = await postOneSignal(payload)
+    attempts.push({ audience: payload.included_segments || payload.include_aliases || payload.include_player_ids || payload.filters, result })
     if (result.ok && (result.sent || 0) > 0) return { ...result, attempts }
   }
+
+  // 2) fallback أقوى: اجلب الأجهزة المشتركة فعلياً ثم أرسل لها مباشرة
+  const players = await getSubscribedPlayerIds().catch(() => [])
+  if (players.length) {
+    const base = { ...(payloads[0] || {}) }
+    delete base.included_segments
+    delete base.include_aliases
+    delete base.include_player_ids
+    delete base.filters
+
+    const result: any = await postOneSignal({
+      ...base,
+      include_player_ids: players
+    })
+    attempts.push({ audience: `include_player_ids:${players.length}`, result })
+    if (result.ok && (result.sent || 0) > 0) return { ...result, attempts }
+  } else {
+    attempts.push({ audience: 'include_player_ids', result: { ok: false, sent: 0, failed: 1, reason: 'no-subscribed-players-found' } })
+  }
+
   const last = attempts[attempts.length - 1]?.result || { ok: false, sent: 0, failed: 1 }
   return { ...last, attempts }
 }
@@ -121,12 +179,11 @@ function notificationBase(title: string, body: string, path = '/', tag?: string)
     headings: { en: title, ar: title },
     contents: { en: body, ar: body },
     web_url: clickUrl,
-    chrome_web_icon: '/icons/icon-192.svg',
-    chrome_web_badge: '/icons/icon-192.svg',
+    chrome_web_icon: siteUrl('/icons/icon-192.svg'),
+    chrome_web_badge: siteUrl('/icons/icon-192.svg'),
     priority: 10,
-    ttl: 3600,
+    ttl: 86400,
     collapse_id: tag,
-    // لا تستخدم data.url لأن OneSignal قد يرفض الطلب عند وجود web_url.
     data: { clickUrl, tag }
   }
 }
@@ -135,7 +192,7 @@ export async function sendOneSignalToUsers(userIds: string[], title: string, bod
   const ids = Array.from(new Set(userIds.filter(Boolean)))
   if (!ids.length) return { ok: true, sent: 0, failed: 0, skipped: true }
 
-  return sendOneSignalNotification({
+  return postOneSignal({
     include_aliases: { external_id: ids },
     ...notificationBase(title, body, path, tag)
   })
@@ -152,7 +209,6 @@ export async function sendOneSignalToAll(title: string, body: string, path = '/'
 }
 
 async function sendWithFallbackToAll(userIds: string[], title: string, body: string, path: string, tag: string) {
-  // افتراضياً نرسل لكل الأجهزة المشتركة لأن جهاز المدير قد لا يكون مربوطاً بنفس id قاعدة البيانات.
   if (env('ONESIGNAL_STRICT_USER_TARGETING') !== 'true') return sendOneSignalToAll(title, body, path, tag)
 
   const byUser = await sendOneSignalToUsers(userIds, title, body, path, tag)
@@ -232,7 +288,7 @@ export async function sendDueInstallmentOneSignalAlerts() {
     const result = await sendWithFallbackToAll(userIds, title, body, '/installments', tag)
     sent += result.sent || 0
     failed += result.failed || 0
-    details.push({ installmentId: i.id, customer: i.sale.customer.fullName, sent: result.sent || 0, ok: result.ok, status: result.status, data: result.data })
+    details.push({ installmentId: i.id, customer: i.sale.customer.fullName, sent: result.sent || 0, ok: result.ok, status: result.status, data: result.data, attempts: result.attempts })
 
     if (result.ok) {
       for (const userId of userIds) {
@@ -246,6 +302,7 @@ export async function sendDueInstallmentOneSignalAlerts() {
   return {
     provider: 'onesignal',
     configured: oneSignalConfigured(),
+    keyStatus: oneSignalKeyStatus(),
     repeatMinutes,
     targeting: env('ONESIGNAL_STRICT_USER_TARGETING') === 'true' ? 'external-user-id' : 'all-subscribed-users',
     installments: installments.length,
