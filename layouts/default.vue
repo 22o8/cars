@@ -197,8 +197,7 @@ async function enableNotifications() {
   notificationStatus.value = Notification.permission as any
 
   if (result?.ok || Notification.permission === 'granted') {
-    await $fetch('/api/onesignal/test', { method: 'POST', credentials: 'include' }).catch(() => null)
-    alert('تم تفعيل إشعارات الهاتف بنجاح. ستصلك تنبيهات الأقساط عبر OneSignal حتى خارج البرنامج.')
+    alert('تم تفعيل إشعارات الهاتف بنجاح. ستصلك التنبيهات عند تسديد قسط أو عند وجود قسط مستحق/متأخر.')
   } else if (Notification.permission === 'denied') {
     alert('الإشعارات محظورة من المتصفح. فعّلها من إعدادات الموقع.')
   } else {
@@ -246,27 +245,11 @@ async function installApp() {
   alert('لإضافة النظام على الهاتف: افتح قائمة المتصفح ثم اختر إضافة إلى الشاشة الرئيسية أو Install app.')
 }
 
-function startNotificationPolling(runNow = false) {
-  if (!auth.user || notificationStatus.value !== 'granted') return
+function startNotificationPolling(_runNow = false) {
+  // تم تعطيل الفحص المحلي المتكرر حتى لا يسبب إزعاجاً أو إشعارات مكررة.
+  // الإشعارات الآن ترسل من السيرفر عبر OneSignal عند تسديد القسط وعبر Cron للأقساط المستحقة/المتأخرة.
   if (notificationTimer) clearInterval(notificationTimer)
-  const check = async () => {
-    try {
-      const due: any[] = await $fetch('/api/installments/due', { credentials: 'include' })
-      const count = due?.length || 0
-      if (!count) return
-      const first = due[0]
-      const bucket = Math.floor(Date.now() / INSTALLMENT_ALERT_REPEAT_MS)
-      const key = `${count}-${first?.id || ''}-${bucket}`
-      if (key === lastNotifiedKey || localStorage.getItem('adp_last_due_notification') === key) return
-      lastNotifiedKey = key
-      localStorage.setItem('adp_last_due_notification', key)
-      await showSystemNotification('تنبيه موعد تسديد قسط', count === 1 ? `يوجد قسط مستحق على ${first?.sale?.customer?.fullName || 'أحد العملاء'}` : `يوجد ${count} أقساط مستحقة أو متأخرة تحتاج متابعة`)
-    } catch {}
-  }
-  if (runNow) check()
-  notificationTimer = setInterval(check, INSTALLMENT_ALERT_REPEAT_MS)
 }
-
 async function showSystemNotification(title: string, body: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   const options: NotificationOptions = { body, tag: 'autodealer-pro', icon: '/icons/icon-192.svg', badge: '/icons/icon-192.svg' }
