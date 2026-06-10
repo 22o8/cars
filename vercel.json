@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/installment-alerts",
-      "schedule": "*/0 9 * * *"
+      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/cron/backup-health",
