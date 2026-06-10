@@ -80,10 +80,14 @@ async function sendOneSignalNotification(payload: any) {
     const recipients = Number(data?.recipients || 0)
     last = { status: res.status, data }
 
-    // OneSignal أحياناً يرجع id بدون recipients في بعض خطط/واجهات API.
-    // إذا الطلب انقبل وطلع message id، نعتبر الإرسال ناجح حتى لا تظهر القيمة 0 رغم وصول الإشعار.
-    if (res.ok && !errors.length && (recipients > 0 || data?.id)) {
+    // OneSignal قد يرجع id بدون recipients، أو يرجع id مع external_id=null.
+    // طالما الطلب مقبول وفيه id نعتبره أُرسل حتى لا تبقى sent = 0 رغم وصول الإشعار.
+    if (res.ok && data?.id) {
       return { ok: true, sent: recipients > 0 ? recipients : 1, failed: 0, status: res.status, data }
+    }
+
+    if (res.ok && !errors.length && recipients > 0) {
+      return { ok: true, sent: recipients, failed: 0, status: res.status, data }
     }
 
     // إذا قبل OneSignal الطلب ولكن بدون مستلمين أو مع خطأ في الجمهور، نرجعها واضحة.
@@ -112,16 +116,18 @@ async function sendOneSignalNotificationWithFallback(payloads: any[]) {
 }
 
 function notificationBase(title: string, body: string, path = '/', tag?: string) {
+  const clickUrl = siteUrl(path)
   return {
     headings: { en: title, ar: title },
     contents: { en: body, ar: body },
-    web_url: siteUrl(path),
+    web_url: clickUrl,
     chrome_web_icon: '/icons/icon-192.svg',
     chrome_web_badge: '/icons/icon-192.svg',
     priority: 10,
     ttl: 3600,
     collapse_id: tag,
-    data: { url: siteUrl(path), tag }
+    // لا تستخدم data.url لأن OneSignal قد يرفض الطلب عند وجود web_url.
+    data: { clickUrl, tag }
   }
 }
 

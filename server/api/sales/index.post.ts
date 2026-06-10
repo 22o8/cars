@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { prisma } from '../../utils/db'
 import { requirePermission } from '../../utils/auth'
 import { audit } from '../../utils/audit'
+import { sendDueInstallmentOneSignalAlerts } from '../../utils/onesignal'
 
 const schema=z.object({
   carId:z.string(), customerId:z.string(), saleType:z.enum(['CASH','INSTALLMENT','TRADE_IN']).default('CASH'),
@@ -51,5 +52,22 @@ export default defineEventHandler(async(event)=>{
   return s
  })
  await audit(user.fullName,'بيع سيارة','Sale',sale.id,`قيمة البيع: ${b.salePrice} | المدفوع: ${paidInitial} | المتبقي: ${remaining}`)
- return sale
+
+ // إذا تم إنشاء بيع أقساط/مراوسة وأول قسط مستحق اليوم أو متأخر، نرسل التنبيه فوراً بدل انتظار Cron اليومي.
+ let notification:any = null
+ if (b.saleType !== 'CASH' && remaining > 0) {
+   const firstDue = b.firstDueDate ? new Date(b.firstDueDate) : new Date()
+   const todayEnd = new Date()
+   todayEnd.setHours(23, 59, 59, 999)
+   if (firstDue <= todayEnd) {
+     notification = await sendDueInstallmentOneSignalAlerts().catch((error:any) => ({
+       ok: false,
+       sent: 0,
+       failed: 1,
+       error: error?.message || 'تعذر إرسال تنبيه القسط بعد البيع'
+     }))
+   }
+ }
+
+ return { ...sale, notification }
 })
