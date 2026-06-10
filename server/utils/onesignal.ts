@@ -80,8 +80,10 @@ async function sendOneSignalNotification(payload: any) {
     const recipients = Number(data?.recipients || 0)
     last = { status: res.status, data }
 
-    if (res.ok && !errors.length && recipients > 0) {
-      return { ok: true, sent: recipients, failed: 0, status: res.status, data }
+    // OneSignal أحياناً يرجع id بدون recipients في بعض خطط/واجهات API.
+    // إذا الطلب انقبل وطلع message id، نعتبر الإرسال ناجح حتى لا تظهر القيمة 0 رغم وصول الإشعار.
+    if (res.ok && !errors.length && (recipients > 0 || data?.id)) {
+      return { ok: true, sent: recipients > 0 ? recipients : 1, failed: 0, status: res.status, data }
     }
 
     // إذا قبل OneSignal الطلب ولكن بدون مستلمين أو مع خطأ في الجمهور، نرجعها واضحة.

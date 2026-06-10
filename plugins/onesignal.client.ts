@@ -3,6 +3,7 @@ declare global {
     OneSignalDeferred?: any[]
     OneSignal?: any
     __adpOneSignalReady?: boolean
+    __adpOneSignalInitPromise?: Promise<boolean>
   }
 }
 
@@ -25,15 +26,17 @@ export default defineNuxtPlugin(() => {
 
   async function initOneSignal() {
     if (!process.client || !appId || window.__adpOneSignalReady) return Boolean(window.__adpOneSignalReady)
+    if (window.__adpOneSignalInitPromise) return window.__adpOneSignalInitPromise
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return false
 
-    await loadOneSignalSdk()
-    window.OneSignalDeferred = window.OneSignalDeferred || []
+    window.__adpOneSignalInitPromise = (async () => {
+      await loadOneSignalSdk()
+      window.OneSignalDeferred = window.OneSignalDeferred || []
 
-    return await new Promise<boolean>((resolve) => {
-      window.OneSignalDeferred!.push(async function (OneSignal: any) {
-        try {
-          await OneSignal.init({
+      return await new Promise<boolean>((resolve) => {
+        window.OneSignalDeferred!.push(async function (OneSignal: any) {
+          try {
+            await OneSignal.init({
             appId,
             allowLocalhostAsSecureOrigin: true,
             serviceWorkerPath: 'OneSignalSDKWorker.js',
@@ -56,14 +59,17 @@ export default defineNuxtPlugin(() => {
               }
             }
           })
-          window.__adpOneSignalReady = true
-          resolve(true)
-        } catch (e) {
-          console.error('OneSignal init failed', e)
-          resolve(false)
-        }
+            window.__adpOneSignalReady = true
+            resolve(true)
+          } catch (e) {
+            console.error('OneSignal init failed', e)
+            resolve(false)
+          }
+        })
       })
-    })
+    })()
+
+    return window.__adpOneSignalInitPromise
   }
 
   async function loginOneSignalUser(userId?: string | null) {

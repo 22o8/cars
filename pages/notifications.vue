@@ -23,7 +23,7 @@
       </div>
       <div class="card p-5">
         <h2 class="text-xl font-black mb-2">تنبيهات خارج البرنامج</h2>
-        <p class="text-muted leading-8">لكي تصل الإشعارات والهاتف مغلق أو خارج الصفحة، يجب ضبط مفاتيح VAPID وتشغيل Vercel Cron على رابط الأقساط.</p>
+        <p class="text-muted leading-8">لكي تصل الإشعارات خارج الصفحة، يجب تفعيل OneSignal على الجهاز وتشغيل Vercel Cron يومياً لتنبيهات الأقساط.</p>
       </div>
     </div>
 
@@ -45,12 +45,9 @@ const subscribed = ref(false)
 
 onMounted(async () => {
   permission.value = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
-  const info: any = await $fetch('/api/push/public-key', { credentials: 'include' }).catch(() => null)
-  pushConfigured.value = Boolean(info?.configured && info?.publicKey)
-  if ('serviceWorker' in navigator) {
-    const reg = await navigator.serviceWorker.ready.catch(() => null)
-    subscribed.value = Boolean(await reg?.pushManager?.getSubscription?.())
-  }
+  const oneSignal: any = useNuxtApp().$oneSignal
+  pushConfigured.value = Boolean(oneSignal?.configured)
+  subscribed.value = permission.value === 'granted'
 })
 
 const permissionText = computed(() => {
@@ -60,24 +57,25 @@ const permissionText = computed(() => {
   return 'الإشعارات غير مفعلة بعد. اضغط زر التفعيل واسمح للمتصفح.'
 })
 const pushText = computed(() => {
-  if (!pushConfigured.value) return 'مفاتيح Push غير مضبوطة في Vercel.'
-  if (subscribed.value) return 'الجهاز مشترك في إشعارات Push.'
-  return 'مفاتيح Push موجودة، لكن الجهاز لم يشترك بعد.'
+  if (!pushConfigured.value) return 'OneSignal غير مضبوط في Vercel.'
+  if (subscribed.value) return 'الجهاز مشترك في إشعارات OneSignal.'
+  return 'OneSignal موجود، لكن الجهاز لم يسمح بالإشعارات بعد.'
 })
 function urlBase64ToUint8Array(base64String: string) { const padding = '='.repeat((4 - base64String.length % 4) % 4); const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/'); const rawData = window.atob(base64); const outputArray = new Uint8Array(rawData.length); for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i); return outputArray }
 async function requestNotifications() {
-  if (typeof Notification === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) { permission.value = 'unsupported'; alert('هذا المتصفح لا يدعم Push Notifications الكاملة'); return }
-  permission.value = await Notification.requestPermission()
-  if (permission.value !== 'granted') return
-  const keyInfo: any = await $fetch('/api/push/public-key', { credentials: 'include' })
-  pushConfigured.value = Boolean(keyInfo?.configured && keyInfo?.publicKey)
-  if (!pushConfigured.value) { alert('أضف مفاتيح VAPID في Vercel حتى تعمل الإشعارات خارج البرنامج.'); return }
-  const reg = await navigator.serviceWorker.ready
-  let sub = await reg.pushManager.getSubscription()
-  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(keyInfo.publicKey) })
-  await $fetch('/api/push/subscribe', { method: 'POST', body: sub.toJSON(), credentials: 'include' })
-  subscribed.value = true
-  await testPush()
+  if (typeof Notification === 'undefined') { permission.value = 'unsupported'; alert('هذا المتصفح لا يدعم إشعارات الويب'); return }
+  const nuxt = useNuxtApp()
+  const oneSignal: any = nuxt.$oneSignal
+  if (!oneSignal?.configured) { alert('أضف NUXT_PUBLIC_ONESIGNAL_APP_ID في Vercel ثم أعد النشر.'); return }
+  const result = await oneSignal.requestPermission('admin')
+  permission.value = result?.permission || Notification.permission
+  subscribed.value = permission.value === 'granted'
+  pushConfigured.value = true
+  if (subscribed.value) alert('تم تفعيل إشعارات OneSignal على هذا الجهاز بنجاح')
 }
-async function testPush() { await $fetch('/api/push/test', { method: 'POST', credentials: 'include' }).then(() => alert('تم إرسال إشعار تجريبي إلى الجهاز')).catch((e:any)=>alert(e?.data?.message || 'تعذر إرسال الإشعار التجريبي')) }
+async function testPush() {
+  await $fetch('/api/onesignal/test', { credentials: 'include' })
+    .then(() => alert('تم إرسال إشعار تجريبي عبر OneSignal'))
+    .catch((e:any)=>alert(e?.data?.message || 'تعذر إرسال الإشعار التجريبي'))
+}
 </script>

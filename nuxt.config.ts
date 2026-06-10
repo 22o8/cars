@@ -8,13 +8,14 @@ export default defineNuxtConfig({
     pageTransition: false,
     layoutTransition: false,
     head: {
-      title: 'AutoDealer Pro - نظام إدارة معارض السيارات',
+      title: 'نظام إدارة المعرض',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1' },
         { name: 'theme-color', content: '#07111f' }
       ],
       link: [
-        { rel: 'icon', href: '/icons/icon-192.svg' },
+        { rel: 'icon', href: '/favicon.ico' },
+        { rel: 'apple-touch-icon', href: '/icons/icon-192.png' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }
       ]
     }
@@ -22,7 +23,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     jwtSecret: process.env.JWT_SECRET || 'change-this-secret',
     public: {
-      appName: 'AutoDealer Pro',
+      appName: 'نظام إدارة المعرض',
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
       oneSignalAppId: process.env.NUXT_PUBLIC_ONESIGNAL_APP_ID || ''
     }
@@ -40,20 +41,22 @@ export default defineNuxtConfig({
     }
   },
   pwa: {
-    registerType: 'autoUpdate',
+    registerType: 'prompt',
+    injectRegister: false,
     manifest: {
-      name: 'AutoDealer Pro',
-      short_name: 'AutoDealer',
-      description: 'نظام إدارة معارض السيارات',
+      name: 'نظام إدارة المعرض',
+      short_name: 'إدارة المعرض',
+      description: 'نظام إدارة المعرض للسيارات والأقساط والعملاء',
       theme_color: '#07111f',
       background_color: '#07111f',
       display: 'standalone',
       orientation: 'portrait-primary',
       icons: [
-        { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
-        { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }
+        { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+        { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
       ]
     },
-    workbox: { navigateFallback: '/', globPatterns: ['**/*.{js,css,html,svg,png,ico}'], importScripts: ['/push-handler.js'] }
+    workbox: { navigateFallback: '/', globPatterns: ['**/*.{js,css,html,svg,png,ico}'] }
   }
 })

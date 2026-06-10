@@ -128,16 +128,13 @@ onMounted(() => {
 })
 async function requestNotifications() {
   if (typeof Notification === 'undefined') return alert('المتصفح لا يدعم الإشعارات على هذا الجهاز')
-  const result = await Notification.requestPermission()
-  notificationHint.value = result !== 'granted'
-  if (result === 'granted') {
-    try {
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.ready.catch(() => null)
-        if (reg?.showNotification) return reg.showNotification('تم تفعيل الإشعارات', { body: 'سيتم تنبيهك عند وجود أقساط مستحقة أو متأخرة.', icon: '/icons/icon-192.svg' })
-      }
-    } catch {}
-    new Notification('تم تفعيل الإشعارات', { body: 'سيتم تنبيهك عند وجود أقساط مستحقة أو متأخرة.', icon: '/icons/icon-192.svg' })
-  }
+  const nuxt = useNuxtApp()
+  const oneSignal: any = nuxt.$oneSignal
+  const userId = auth.user?.id || auth.user?.username || 'admin'
+  const result = await oneSignal?.requestPermission?.(String(userId))
+  const granted = result?.permission === 'granted' || Notification.permission === 'granted'
+  notificationHint.value = !granted
+  if (granted) alert('تم تفعيل الإشعارات على هذا الجهاز بنجاح')
+  else alert('لم يتم السماح بالإشعارات. افتح إعدادات الموقع وفعّل Notifications.')
 }
 </script>
