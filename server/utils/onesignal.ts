@@ -60,10 +60,20 @@ async function sendOneSignalNotification(payload: any) {
     })
 
     const data = await res.json().catch(() => ({}))
+    const errors = Array.isArray(data?.errors) ? data.errors : []
+    const recipients = Number(data?.recipients || 0)
     last = { status: res.status, data }
-    if (res.ok) {
-      const recipients = Number(data?.recipients || 0)
+
+    // OneSignal أحياناً يرجع HTTP 200 لكن الرسالة لم تصل لأن المستلمين صفر.
+    // لذلك لا نعتبر العملية ناجحة إلا إذا لم توجد أخطاء وكان عدد المستلمين أكبر من صفر.
+    if (res.ok && !errors.length && recipients > 0) {
       return { ok: true, sent: recipients, failed: 0, data }
+    }
+
+    // إذا OneSignal قبل الطلب لكن لا يوجد مستلمين، نرجعها كفشل واضح حتى نجرب fallback آخر.
+    if (res.ok && errors.length) {
+      last = { status: 200, data, softError: true }
+      break
     }
 
     // جرّب صيغة Authorization الثانية فقط في حالة رفض المفتاح.
@@ -76,8 +86,21 @@ async function sendOneSignalNotification(payload: any) {
     failed: 1,
     status: last?.status,
     data: last?.data,
-    hint: 'تحقق أن ONESIGNAL_REST_API_KEY هو REST API Key الكامل وليس Key ID، وأنه مربوط بنفس App ID.'
+    hint: 'إذا كان المفتاح صحيحاً وظهرت رسالة All included players are not subscribed فالمشكلة غالباً اسم Segment. الكود يجرب Total Subscriptions ثم Subscribed Users ثم All.'
   }
+}
+
+async function sendOneSignalNotificationWithFallback(payloads: any[]) {
+  const attempts: any[] = []
+  for (const payload of payloads) {
+    const result: any = await sendOneSignalNotification(payload)
+    attempts.push({ audience: payload.included_segments || payload.include_aliases || payload.include_subscription_ids || payload.filters, result })
+    if (result.ok && (result.sent || 0) > 0) {
+      return { ...result, attempts }
+    }
+  }
+  const last = attempts[attempts.length - 1]?.result || { ok: false, sent: 0, failed: 1 }
+  return { ...last, attempts }
 }
 
 export async function sendOneSignalToUsers(userIds: string[], title: string, body: string, url = '/', tag?: string) {
@@ -101,8 +124,7 @@ export async function sendOneSignalToUsers(userIds: string[], title: string, bod
 }
 
 export async function sendOneSignalToAll(title: string, body: string, url = '/', tag?: string) {
-  return sendOneSignalNotification({
-    included_segments: ['Subscribed Users'],
+  const basePayload = {
     headings: { en: title, ar: title },
     contents: { en: body, ar: body },
     url,
@@ -113,7 +135,15 @@ export async function sendOneSignalToAll(title: string, body: string, url = '/',
     ttl: 3600,
     collapse_id: tag,
     data: { url, tag }
-  })
+  }
+
+  // في OneSignal الجديد اسم الشريحة الافتراضية يظهر غالباً Total Subscriptions.
+  // نترك أكثر من محاولة حتى لا تتوقف الإشعارات بسبب اختلاف اسم Segment بين الحسابات.
+  return sendOneSignalNotificationWithFallback([
+    { ...basePayload, included_segments: ['Total Subscriptions'] },
+    { ...basePayload, included_segments: ['Subscribed Users'] },
+    { ...basePayload, included_segments: ['All'] }
+  ])
 }
 
 async function sendWithFallbackToAll(userIds: string[], title: string, body: string, url: string, tag: string) {
