@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     prisma.car.count(),
     prisma.car.count({ where: { status: 'AVAILABLE' } }),
     prisma.customer.count(),
-    prisma.sale.findMany({ include: { customer: true, car: true }, orderBy: { saleDate: 'desc' } }),
+    prisma.sale.findMany({ include: { customer: true, car: true, installments: { orderBy: { dueDate: 'asc' } } }, orderBy: { saleDate: 'desc' } }),
     prisma.expense.findMany(),
     prisma.installment.findMany(),
     prisma.cashboxTransaction.findMany({ orderBy: { createdAt: 'desc' } }),
@@ -46,5 +46,5 @@ export default defineEventHandler(async (event) => {
     const monthSales = sales.filter(s => new Date(s.saleDate).getMonth() === m.month && new Date(s.saleDate).getFullYear() === m.year)
     return { label: m.label, sales: roundMoney(monthSales.reduce((a,s)=>a+saleIqd(s),0)), profit: roundMoney(monthSales.reduce((a,s)=>a+profitIqd(s),0)) }
   })
-  return { cars, availableCars, customers, salesCount: sales.length, salesToday, latestSales: sales.slice(0,6), latestPurchases: purchases.slice(0,6), purchasesCount: purchases.length, totalPurchasesIqd, totalPurchasePaidIqd, purchaseDebtIqd, overdue, cashIqd, totalSalesIqd, totalPaidIqd, expenseIqd, grossProfitIqd, netProfitIqd, debtIqd, chart, latestOps, usdRate }
+  return { cars, availableCars, customers, salesCount: sales.length, salesToday, latestSales: sales.slice(0,50), latestPurchases: purchases.slice(0,50), purchasesCount: purchases.length, totalPurchasesIqd, totalPurchasePaidIqd, purchaseDebtIqd, overdue, cashIqd, totalSalesIqd, totalPaidIqd, expenseIqd, grossProfitIqd, netProfitIqd, debtIqd, chart, latestOps, usdRate }
 })

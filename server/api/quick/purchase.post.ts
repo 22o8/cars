@@ -7,8 +7,9 @@ const schema = z.object({
   sellerName: z.string().min(1, 'اسم صاحب السيارة مطلوب'),
   sellerPhone: z.string().optional().nullable(),
   carName: z.string().min(1, 'اسم السيارة مطلوب'),
+  totalAmount: z.number().min(0).optional().default(0),
   paidAmount: z.number().min(0).default(0),
-  remainingAmount: z.number().min(0).default(0),
+  remainingAmount: z.number().min(0).optional().default(0),
   currency: z.enum(['IQD', 'USD']).default('IQD'),
   durationUnit: z.enum(['DAYS', 'MONTHS']).default('DAYS'),
   durationValue: z.number().min(0).default(0),
@@ -38,10 +39,11 @@ export default defineEventHandler(async (event) => {
   const user = await requirePermission(event, 'purchases')
   const body = schema.parse(await readBody(event))
 
-  const paid = Number(body.paidAmount || 0)
-  const remaining = Number(body.remainingAmount || 0)
-  const total = paid + remaining
-  if (total <= 0) throw createError({ statusCode: 400, message: 'اكتب الواصل أو الباقي حتى يتم إنشاء الشراء' })
+  const totalInput = Number(body.totalAmount || 0)
+  const paid = Math.min(Number(body.paidAmount || 0), Math.max(totalInput, Number(body.paidAmount || 0)))
+  const remaining = totalInput > 0 ? Math.max(totalInput - paid, 0) : Number(body.remainingAmount || 0)
+  const total = totalInput > 0 ? totalInput : paid + remaining
+  if (total <= 0) throw createError({ statusCode: 400, message: 'اكتب سعر السيارة الكلي أو الواصل حتى يتم إنشاء الشراء' })
 
   const from = body.fromDate ? new Date(body.fromDate) : new Date()
   const dueDate = remaining > 0 ? calculateDueDate(from, body.durationUnit, body.durationValue) : null

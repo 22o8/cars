@@ -56,12 +56,25 @@
         <FormField label="اسم السيارة" hint="مثال: كامري 2020 أو كيا سبورتج">
           <input v-model.trim="quick.carName" class="input" placeholder="اسم السيارة" />
         </FormField>
-        <FormField label="الواصل" hint="المبلغ الذي تم استلامه أو دفعه الآن">
-          <input v-model.number="quick.paidAmount" type="number" min="0" class="input" placeholder="الواصل" />
-        </FormField>
-        <FormField label="الباقي" hint="المبلغ المتبقي على الطرف الآخر أو عليك">
-          <input v-model.number="quick.remainingAmount" type="number" min="0" class="input" placeholder="الباقي" />
-        </FormField>
+        <template v-if="mode === 'purchase'">
+          <FormField label="سعر السيارة الكلي" hint="اكتب السعر المتفق عليه لشراء السيارة">
+            <input v-model.number="quick.totalAmount" type="number" min="0" class="input" placeholder="سعر السيارة الكلي" />
+          </FormField>
+          <FormField label="الواصل حالياً" hint="المبلغ الذي دفعته الآن لصاحب السيارة">
+            <input v-model.number="quick.paidAmount" type="number" min="0" class="input" placeholder="الواصل" />
+          </FormField>
+          <FormField label="المتبقي تلقائياً" hint="يحسب من سعر السيارة الكلي ناقص الواصل">
+            <input :value="purchaseRemaining" readonly class="input bg-slate-500/10" placeholder="المتبقي" />
+          </FormField>
+        </template>
+        <template v-else>
+          <FormField label="الواصل" hint="المبلغ الذي استلمته الآن من العميل">
+            <input v-model.number="quick.paidAmount" type="number" min="0" class="input" placeholder="الواصل" />
+          </FormField>
+          <FormField label="الباقي" hint="المبلغ المتبقي على العميل">
+            <input v-model.number="quick.remainingAmount" type="number" min="0" class="input" placeholder="الباقي" />
+          </FormField>
+        </template>
         <FormField label="المدة" hint="اختر نوع المدة ثم اكتب الرقم">
           <div class="grid grid-cols-2 gap-2">
             <select v-model="quick.durationUnit" class="input">
@@ -98,7 +111,7 @@
       <div class="mt-5 grid gap-3 md:grid-cols-4">
         <div class="soft-card p-4"><span class="text-sm text-muted">إجمالي العملية</span><b class="mt-1 block">{{ money(totalQuick, quick.currency) }}</b></div>
         <div class="soft-card p-4"><span class="text-sm text-muted">الواصل</span><b class="mt-1 block text-emerald-500">{{ money(quick.paidAmount, quick.currency) }}</b></div>
-        <div class="soft-card p-4"><span class="text-sm text-muted">الباقي</span><b class="mt-1 block text-amber-500">{{ money(quick.remainingAmount, quick.currency) }}</b></div>
+        <div class="soft-card p-4"><span class="text-sm text-muted">الباقي</span><b class="mt-1 block text-amber-500">{{ money(mode === 'purchase' ? purchaseRemaining : quick.remainingAmount, quick.currency) }}</b></div>
         <div class="soft-card p-4"><span class="text-sm text-muted">موعد التسديد</span><b class="mt-1 block">{{ quickDueText }}</b></div>
       </div>
 
@@ -121,14 +134,16 @@
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="font-black">{{ s.car?.brand }} {{ s.car?.model }}</div>
-              <div class="mt-1 text-sm text-muted">{{ s.customer?.fullName }} - {{ dateText(s.saleDate) }}</div>
+              <div class="mt-1 text-sm text-muted">العميل: {{ s.customer?.fullName }} <span v-if="s.customer?.phone">- {{ s.customer.phone }}</span></div>
+              <div class="mt-1 text-xs text-muted">تاريخ البيع: {{ dateText(s.saleDate) }} <span v-if="nextInstallment(s)">- موعد القسط: {{ dateText(nextInstallment(s)?.dueDate) }}</span></div>
             </div>
             <span class="rounded-xl bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-500">بيع</span>
           </div>
-          <div class="mt-3 grid grid-cols-3 gap-2 text-sm">
+          <div class="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
             <div class="soft-card p-3"><span class="text-muted">القيمة</span><b class="block">{{ money(s.salePrice, s.currency) }}</b></div>
             <div class="soft-card p-3"><span class="text-muted">الواصل</span><b class="block text-emerald-500">{{ money(s.paidAmount, s.currency) }}</b></div>
             <div class="soft-card p-3"><span class="text-muted">الباقي</span><b class="block text-amber-500">{{ money(s.remainingAmount, s.currency) }}</b></div>
+            <div class="soft-card p-3"><span class="text-muted">الحالة</span><b class="block">{{ s.remainingAmount > 0 ? 'عليه قسط' : 'مسدد' }}</b></div>
           </div>
         </div>
       </div>
@@ -146,16 +161,20 @@
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="font-black">{{ p.carName }}</div>
-              <div class="mt-1 text-sm text-muted">{{ p.sellerName }} - {{ dateText(p.fromDate) }}</div>
+              <div class="mt-1 text-sm text-muted">صاحب السيارة: {{ p.sellerName }} <span v-if="p.sellerPhone">- {{ p.sellerPhone }}</span></div>
+              <div class="mt-1 text-xs text-muted">من تاريخ: {{ dateText(p.fromDate) }} - موعد التسديد: {{ p.dueDate ? dateText(p.dueDate) : '-' }}</div>
             </div>
             <span class="rounded-xl bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-500">شراء</span>
           </div>
-          <div class="mt-3 grid grid-cols-3 gap-2 text-sm">
-            <div class="soft-card p-3"><span class="text-muted">القيمة</span><b class="block">{{ money(p.totalAmount, p.currency) }}</b></div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+            <div class="soft-card p-3"><span class="text-muted">سعر السيارة</span><b class="block">{{ money(p.totalAmount, p.currency) }}</b></div>
             <div class="soft-card p-3"><span class="text-muted">الواصل</span><b class="block text-emerald-500">{{ money(p.paidAmount, p.currency) }}</b></div>
             <div class="soft-card p-3"><span class="text-muted">الباقي</span><b class="block text-amber-500">{{ money(p.remainingAmount, p.currency) }}</b></div>
+            <div class="soft-card p-3"><span class="text-muted">الحالة</span><b class="block">{{ purchaseStatus(p.status) }}</b></div>
           </div>
-          <div class="mt-3 text-xs text-muted">موعد التسديد: {{ dateText(p.dueDate) }}</div>
+          <div v-if="Array.isArray(p.imageUrls) && p.imageUrls.length" class="mt-3 flex gap-2 overflow-x-auto">
+            <img v-for="(img, i) in p.imageUrls" :key="i" :src="img" class="h-16 w-20 rounded-xl border object-cover" style="border-color: var(--border)" />
+          </div>
         </div>
       </div>
     </div>
@@ -175,6 +194,7 @@ const quickImages = ref<string[]>([])
 const quick = reactive({
   ownerName: '',
   carName: '',
+  totalAmount: 0,
   paidAmount: 0,
   remainingAmount: 0,
   durationUnit: 'DAYS' as 'DAYS' | 'MONTHS',
@@ -186,7 +206,8 @@ const quick = reactive({
 })
 
 const userInitial = computed(() => (auth.user?.fullName || auth.user?.username || 'م').trim().slice(0, 1))
-const totalQuick = computed(() => Number(quick.paidAmount || 0) + Number(quick.remainingAmount || 0))
+const purchaseRemaining = computed(() => Math.max(Number(quick.totalAmount || 0) - Number(quick.paidAmount || 0), 0))
+const totalQuick = computed(() => mode.value === 'purchase' ? Number(quick.totalAmount || 0) : Number(quick.paidAmount || 0) + Number(quick.remainingAmount || 0))
 const quickDueText = computed(() => dateText(calculateDueDate()))
 
 function notify(text: string, type: 'ok' | 'error' = 'ok') {
@@ -219,7 +240,7 @@ async function onQuickFiles(event: any) {
 
 function resetQuick() {
   Object.assign(quick, {
-    ownerName: '', carName: '', paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS', durationValue: 0, fromDate: today, phone: '', currency: 'IQD', notes: ''
+    ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS', durationValue: 0, fromDate: today, phone: '', currency: 'IQD', notes: ''
   })
   quickImages.value = []
 }
@@ -228,15 +249,25 @@ async function refreshAll() {
   await refresh()
 }
 
+
+function nextInstallment(s: any) {
+  return Array.isArray(s?.installments) ? s.installments.find((i: any) => i.status !== 'PAID') : null
+}
+
+function purchaseStatus(s: string) {
+  return ({ OPEN: 'مفتوح', PAID: 'مدفوع', LATE: 'متأخر' } as any)[s] || s || '-'
+}
+
 async function submitQuick() {
   if (!quick.ownerName || !quick.carName) return notify('اكتب الاسم واسم السيارة أولاً', 'error')
-  if (totalQuick.value <= 0) return notify('اكتب الواصل أو الباقي حتى يتم تنفيذ العملية', 'error')
+  if (totalQuick.value <= 0) return notify(mode.value === 'purchase' ? 'اكتب سعر السيارة الكلي أولاً' : 'اكتب الواصل أو الباقي حتى يتم تنفيذ العملية', 'error')
   saving.value = true
   try {
     const body = {
       carName: quick.carName,
+      totalAmount: mode.value === 'purchase' ? Number(quick.totalAmount || 0) : undefined,
       paidAmount: Number(quick.paidAmount || 0),
-      remainingAmount: Number(quick.remainingAmount || 0),
+      remainingAmount: mode.value === 'purchase' ? purchaseRemaining.value : Number(quick.remainingAmount || 0),
       currency: quick.currency,
       durationUnit: quick.durationUnit,
       durationValue: Number(quick.durationValue || 0),
