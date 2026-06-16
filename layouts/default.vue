@@ -278,6 +278,7 @@ const menu = [
   ]},
   { title: 'إدارة المبيعات', items: [
     { to: '/sales', label: 'المبيعات والمراوسة', short: 'مبيعات', icon: 'cart' },
+    { to: '/purchases', label: 'شراء السيارات', short: 'شراء', icon: 'swap' },
     { to: '/installments', label: 'الأقساط والدفعات', short: 'أقساط', icon: 'card' },
     { to: '/invoices', label: 'الفواتير والسندات', short: 'فواتير', icon: 'file' },
     { to: '/expenses', label: 'المصاريف', short: 'مصروفات', icon: 'swap' },
@@ -299,6 +300,7 @@ function itemPermission(to: string) {
   if (to.startsWith('/cars')) return 'cars'
   if (to.startsWith('/customers')) return 'customers'
   if (to.startsWith('/sales')) return 'sales'
+  if (to.startsWith('/purchases')) return 'purchases'
   if (to.startsWith('/installments')) return 'installments'
   if (to.startsWith('/invoices')) return 'invoices'
   if (to.startsWith('/expenses')) return 'expenses'
@@ -311,9 +313,9 @@ function itemPermission(to: string) {
 }
 const visibleMenu = computed(() => menu.map(g => ({ ...g, items: g.items.filter((i: any) => isAdmin.value || auth.can(itemPermission(i.to))) })).filter(g => g.items.length))
 const flat = computed(() => visibleMenu.value.flatMap(g => g.items))
-const mobilePrimaryMenu = computed(() => flat.value.filter((i:any) => ['/', '/cars', '/customers', '/sales', '/installments', '/invoices'].includes(i.to)).slice(0, 6))
+const mobilePrimaryMenu = computed(() => flat.value.filter((i:any) => ['/', '/cars', '/customers', '/sales', '/purchases', '/installments', '/invoices'].includes(i.to)).slice(0, 6))
 const mobileBottomMenu = computed(() => {
-  const preferred = ['/', '/cars', '/customers', '/sales', '/installments']
+  const preferred = ['/', '/cars', '/customers', '/sales', '/purchases']
   return preferred.map(p => flat.value.find((x:any) => x.to === p)).filter(Boolean) as any[]
 })
 const isMobileHeaderReady = computed(() => auth.user && mobilePrimaryMenu.value.length > 0)

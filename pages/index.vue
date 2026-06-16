@@ -30,7 +30,7 @@
       </div>
     </div>
 
-    <div class="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+    <div class="grid grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
       <div v-for="s in stats" :key="s.label" class="card p-5">
         <p class="text-sm font-bold text-muted">{{ s.label }}</p>
         <h3 class="stat-value mt-3" :class="s.class">{{ s.value }}</h3>
@@ -40,6 +40,62 @@
 
     <div v-if="data?.overdue" class="mb-6 rounded-3xl border border-amber-400/50 bg-amber-500/10 p-5 font-bold text-amber-700 dark:text-amber-300">
       لديك {{ data.overdue }} قسط مستحق أو متأخر. راجع صفحة الأقساط والدفعات.
+    </div>
+
+    <div class="mb-6 grid gap-4 xl:grid-cols-2">
+      <div class="card p-5">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-black">سجل السيارات المباعة</h2>
+            <p class="text-sm text-muted">آخر عمليات البيع وكم تبقى من أقساطها</p>
+          </div>
+          <NuxtLink to="/sales" class="btn-secondary btn py-2 text-xs">كل المبيعات</NuxtLink>
+        </div>
+        <div v-if="!data?.latestSales?.length" class="soft-card p-6 text-center text-muted">لا توجد مبيعات بعد</div>
+        <div v-for="s in data?.latestSales" :key="s.id" class="mb-3 rounded-2xl border p-4" style="border-color: var(--border); background: var(--panel-2)">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-black">{{ s.car?.brand }} {{ s.car?.model }}</div>
+              <div class="mt-1 text-sm text-muted">{{ s.customer?.fullName }} - {{ dateText(s.saleDate) }}</div>
+            </div>
+            <div class="text-left">
+              <div class="text-xs text-muted">الباقي</div>
+              <div class="font-black text-amber-500">{{ money(s.remainingAmount, s.currency) }}</div>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div class="soft-card p-3"><span class="text-muted">الواصل</span><b class="block text-emerald-500">{{ money(s.paidAmount, s.currency) }}</b></div>
+            <div class="soft-card p-3"><span class="text-muted">قيمة البيع</span><b class="block">{{ money(s.salePrice, s.currency) }}</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-5">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-black">سجل السيارات المشتراة</h2>
+            <p class="text-sm text-muted">آخر السيارات التي اشتراها المعرض والديون المتبقية عليها</p>
+          </div>
+          <NuxtLink to="/purchases" class="btn-secondary btn py-2 text-xs">كل المشتريات</NuxtLink>
+        </div>
+        <div v-if="!data?.latestPurchases?.length" class="soft-card p-6 text-center text-muted">لا توجد مشتريات بعد</div>
+        <div v-for="p in data?.latestPurchases" :key="p.id" class="mb-3 rounded-2xl border p-4" style="border-color: var(--border); background: var(--panel-2)">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-black">{{ p.carName }}</div>
+              <div class="mt-1 text-sm text-muted">{{ p.sellerName }} - {{ dateText(p.fromDate) }}</div>
+            </div>
+            <div class="text-left">
+              <div class="text-xs text-muted">الباقي</div>
+              <div class="font-black text-amber-500">{{ money(p.remainingAmount, p.currency) }}</div>
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div class="soft-card p-3"><span class="text-muted">الواصل</span><b class="block text-emerald-500">{{ money(p.paidAmount, p.currency) }}</b></div>
+            <div class="soft-card p-3"><span class="text-muted">مدة الدين</span><b class="block">{{ p.durationDays || 0 }} يوم</b></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="grid xl:grid-cols-3 gap-6">
@@ -98,6 +154,7 @@
           <NuxtLink to="/cars" class="btn-secondary btn justify-between">إضافة سيارة جديدة</NuxtLink>
           <NuxtLink to="/customers" class="btn-secondary btn justify-between">إضافة عميل جديد</NuxtLink>
           <NuxtLink to="/sales" class="btn-secondary btn justify-between">تنفيذ بيع جديد</NuxtLink>
+          <NuxtLink to="/purchases" class="btn-secondary btn justify-between">تسجيل شراء سيارة</NuxtLink>
           <NuxtLink to="/invoices" class="btn-secondary btn justify-between">إنشاء فاتورة</NuxtLink>
         </div>
       </div>
@@ -111,6 +168,7 @@ const stats = computed(() => [
   { label:'العملاء', value:data.value?.customers || 0, caption:'إجمالي العملاء', class:'' },
   { label:'المبيعات اليوم', value:data.value?.salesToday || 0, caption:'عملية بيع', class:'' },
   { label:'السيارات المتاحة', value:data.value?.availableCars || 0, caption:'سيارة متاحة', class:'' },
+  { label:'شراء السيارات', value:data.value?.purchasesCount || 0, caption:'عملية شراء', class:'' },
   { label:'إجمالي المبيعات', value:money(data.value?.totalSalesIqd || 0,'IQD'), caption:'بالدينار العراقي', class:'text-blue-500' },
   { label:'صافي الربح', value:money(data.value?.netProfitIqd || 0,'IQD'), caption:'بعد المصروفات', class:'text-emerald-500' }
 ])

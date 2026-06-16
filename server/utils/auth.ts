@@ -29,9 +29,9 @@ export async function requireRole(event: any, roles: string[]) {
 }
 
 const rolePermissions: Record<string, string[]> = {
-  ADMIN: ['dashboard','cars','customers','sales','installments','invoices','expenses','accounts','reports','employees','settings'],
-  ACCOUNTANT: ['dashboard','sales','installments','invoices','expenses','accounts','reports','customers'],
-  SALES: ['dashboard','cars','customers','sales','installments','invoices'],
+  ADMIN: ['dashboard','cars','customers','sales','purchases','installments','invoices','expenses','accounts','reports','employees','settings'],
+  ACCOUNTANT: ['dashboard','sales','purchases','installments','invoices','expenses','accounts','reports','customers'],
+  SALES: ['dashboard','cars','customers','sales','purchases','installments','invoices'],
   VIEWER: ['dashboard','cars','customers','reports']
 }
 

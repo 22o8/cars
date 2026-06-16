@@ -139,6 +139,29 @@ model Payment {
   installment   Installment? @relation(fields: [installmentId], references: [id])
 }
 
+model Purchase {
+  id              String   @id @default(cuid())
+  sellerName      String
+  sellerPhone     String?
+  carName         String
+  brand           String?
+  model           String?
+  year            Int?
+  totalAmount     Decimal  @default(0)
+  paidAmount      Decimal  @default(0)
+  remainingAmount Decimal  @default(0)
+  currency        Currency @default(IQD)
+  durationDays    Int      @default(0)
+  fromDate        DateTime @default(now())
+  dueDate         DateTime?
+  status          String   @default("OPEN")
+  notes           String?
+  imageUrls       Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+
 model Expense {
   id          String   @id @default(cuid())
   title       String
