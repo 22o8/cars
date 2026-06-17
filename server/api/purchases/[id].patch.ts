@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ensurePurchaseTable } from '../../utils/schema'
 import { prisma } from '../../utils/db'
 import { requirePermission } from '../../utils/auth'
 import { audit } from '../../utils/audit'
@@ -21,6 +22,7 @@ const schema = z.object({
 
 export default defineEventHandler(async (event) => {
   const user = await requirePermission(event,'purchases')
+  await ensurePurchaseTable()
   const id = String(getRouterParam(event,'id'))
   const old = await prisma.purchase.findUnique({ where: { id } })
   if (!old) throw createError({ statusCode: 404, message: 'عملية الشراء غير موجودة' })

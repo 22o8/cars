@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ensurePurchaseTable } from '../../utils/schema'
 import { prisma } from '../../utils/db'
 import { requirePermission } from '../../utils/auth'
 import { audit } from '../../utils/audit'
@@ -22,6 +23,7 @@ const schema = z.object({
 
 export default defineEventHandler(async (event) => {
   const user = await requirePermission(event, 'purchases')
+  await ensurePurchaseTable()
   const b = schema.parse(await readBody(event))
   const paid = Math.min(Number(b.paidAmount || 0), Number(b.totalAmount || 0))
   const remaining = Math.max(Number(b.totalAmount || 0) - paid, 0)

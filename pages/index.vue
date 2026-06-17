@@ -19,63 +19,64 @@
     </div>
 
     <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-      <div class="card p-4">
-        <div class="text-xs font-bold text-muted">باقي مبيعات</div>
-        <div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.debtIqd || 0, 'IQD') }}</div>
-      </div>
-      <div class="card p-4">
-        <div class="text-xs font-bold text-muted">باقي مشتريات</div>
-        <div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.purchaseDebtIqd || 0, 'IQD') }}</div>
-      </div>
-      <div class="card p-4">
-        <div class="text-xs font-bold text-muted">الواصل مبيعات</div>
-        <div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPaidIqd || 0, 'IQD') }}</div>
-      </div>
-      <div class="card p-4">
-        <div class="text-xs font-bold text-muted">الواصل مشتريات</div>
-        <div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPurchasePaidIqd || 0, 'IQD') }}</div>
-      </div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مبيعات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.debtIqd || 0, 'IQD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مشتريات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.purchaseDebtIqd || 0, 'IQD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مبيعات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPaidIqd || 0, 'IQD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مشتريات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPurchasePaidIqd || 0, 'IQD') }}</div></div>
+    </div>
+
+    <div class="mb-5 grid grid-cols-2 gap-3">
+      <button class="quick-action" :class="mode === 'purchase' ? 'quick-action-active purchase' : ''" @click="mode = 'purchase'">
+        <span class="text-2xl">🚗</span>
+        <b>شراء سيارة</b>
+        <small>سعر كلي، واصل، مدة</small>
+      </button>
+      <button class="quick-action" :class="mode === 'sale' ? 'quick-action-active sale' : ''" @click="mode = 'sale'">
+        <span class="text-2xl">🧾</span>
+        <b>بيع سيارة</b>
+        <small>واصل، باقي، موعد</small>
+      </button>
     </div>
 
     <div class="card mb-5 overflow-hidden p-4 md:p-5">
       <div class="mb-4 flex items-center justify-between gap-2">
         <div>
-          <h2 class="text-xl font-black">التنفيذ السريع</h2>
-          <p class="text-sm text-muted">بيع أو شراء سيارة بأقل عدد من الحقول.</p>
+          <h2 class="text-xl font-black">{{ mode === 'purchase' ? 'تنفيذ شراء سريع' : 'تنفيذ بيع سريع' }}</h2>
+          <p class="text-sm text-muted">حقول قليلة، وحساب الباقي والموعد تلقائياً.</p>
         </div>
-        <div class="rounded-2xl border p-1" style="border-color: var(--border); background: var(--panel-2)">
-          <button class="rounded-xl px-4 py-2 text-sm font-black transition" :class="mode === 'sale' ? 'bg-blue-600 text-white' : 'text-muted'" @click="mode = 'sale'">بيع سيارة</button>
-          <button class="rounded-xl px-4 py-2 text-sm font-black transition" :class="mode === 'purchase' ? 'bg-emerald-600 text-white' : 'text-muted'" @click="mode = 'purchase'">شراء سيارة</button>
-        </div>
+        <NuxtLink to="/records" class="btn-secondary btn py-2 text-xs">السجلات</NuxtLink>
       </div>
 
       <div class="grid gap-4 lg:grid-cols-2">
-        <FormField :label="mode === 'sale' ? 'اسم العميل' : 'اسم صاحب السيارة'" hint="اكتب الاسم الذي سيتم حفظ العملية عليه">
+        <FormField :label="mode === 'sale' ? 'اسم العميل' : 'اسم صاحب السيارة'" hint="الاسم الأساسي للعملية">
           <input v-model.trim="quick.ownerName" class="input" :placeholder="mode === 'sale' ? 'اسم العميل' : 'اسم صاحب السيارة'" />
         </FormField>
         <FormField label="اسم السيارة" hint="مثال: كامري 2020 أو كيا سبورتج">
           <input v-model.trim="quick.carName" class="input" placeholder="اسم السيارة" />
         </FormField>
+
         <template v-if="mode === 'purchase'">
-          <FormField label="سعر السيارة الكلي" hint="اكتب السعر المتفق عليه لشراء السيارة">
+          <FormField label="سعر السيارة الكلي" hint="السعر المتفق عليه للشراء">
             <input v-model.number="quick.totalAmount" type="number" min="0" class="input" placeholder="سعر السيارة الكلي" />
           </FormField>
-          <FormField label="الواصل حالياً" hint="المبلغ الذي دفعته الآن لصاحب السيارة">
+          <FormField label="الواصل حالياً" hint="المبلغ المدفوع الآن">
             <input v-model.number="quick.paidAmount" type="number" min="0" class="input" placeholder="الواصل" />
           </FormField>
-          <FormField label="المتبقي تلقائياً" hint="يحسب من سعر السيارة الكلي ناقص الواصل">
-            <input :value="purchaseRemaining" readonly class="input bg-slate-500/10" placeholder="المتبقي" />
+          <FormField label="المتبقي تلقائياً" hint="سعر السيارة ناقص الواصل">
+            <input :value="purchaseRemaining" readonly class="input bg-slate-500/10" />
           </FormField>
         </template>
+
         <template v-else>
-          <FormField label="الواصل" hint="المبلغ الذي استلمته الآن من العميل">
+          <FormField label="الواصل" hint="المبلغ الذي استلمته الآن">
             <input v-model.number="quick.paidAmount" type="number" min="0" class="input" placeholder="الواصل" />
           </FormField>
           <FormField label="الباقي" hint="المبلغ المتبقي على العميل">
             <input v-model.number="quick.remainingAmount" type="number" min="0" class="input" placeholder="الباقي" />
           </FormField>
         </template>
-        <FormField label="المدة" hint="اختر نوع المدة ثم اكتب الرقم">
+
+        <FormField label="المدة" hint="اختر أيام أو أشهر ثم اكتب الرقم">
           <div class="grid grid-cols-2 gap-2">
             <select v-model="quick.durationUnit" class="input">
               <option value="DAYS">أيام</option>
@@ -84,10 +85,10 @@
             <input v-model.number="quick.durationValue" type="number" min="0" class="input" :placeholder="quick.durationUnit === 'DAYS' ? 'مثال: 60' : 'مثال: 3'" />
           </div>
         </FormField>
-        <FormField label="من تاريخ" hint="يبدأ منه حساب مدة التسديد">
+        <FormField label="من تاريخ" hint="يبدأ منه حساب التسديد">
           <input v-model="quick.fromDate" type="date" class="input" />
         </FormField>
-        <FormField label="رقم الهاتف" hint="اختياري للمتابعة لاحقاً">
+        <FormField label="رقم الهاتف" hint="اختياري">
           <input v-model.trim="quick.phone" class="input" placeholder="اختياري" />
         </FormField>
         <FormField label="العملة" hint="عملة العملية">
@@ -96,11 +97,11 @@
             <option value="USD">دولار</option>
           </select>
         </FormField>
-        <FormField label="المستمسكات أو صور السيارة" hint="اختياري، يمكن التقاط صورة من الهاتف أو رفع صورة">
+        <FormField label="المستمسكات أو الصور" hint="اختياري، التقاط صورة أو رفع ملف">
           <input type="file" accept="image/*" capture="environment" multiple class="input" @change="onQuickFiles" />
         </FormField>
         <FormField label="ملاحظات" hint="اختياري">
-          <input v-model.trim="quick.notes" class="input" placeholder="أي ملاحظة مختصرة" />
+          <input v-model.trim="quick.notes" class="input" placeholder="ملاحظة مختصرة" />
         </FormField>
       </div>
 
@@ -116,67 +117,8 @@
       </div>
 
       <button class="btn-primary btn mt-5 w-full justify-center py-4 text-base" :disabled="saving" @click="submitQuick">
-        {{ saving ? 'جاري تنفيذ العملية' : mode === 'sale' ? 'تنفيذ بيع سيارة' : 'تنفيذ شراء سيارة' }}
+        {{ saving ? 'جاري التنفيذ' : mode === 'sale' ? 'تنفيذ بيع سيارة' : 'تنفيذ شراء سيارة' }}
       </button>
-    </div>
-
-    <div class="grid gap-5 xl:grid-cols-2">
-      <div class="card p-4 md:p-5">
-        <div class="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-xl font-black">السيارات التي تم بيعها</h2>
-            <p class="text-sm text-muted">السجل المختصر مع الواصل والباقي.</p>
-          </div>
-          <NuxtLink to="/sales" class="btn-secondary btn py-2 text-xs">كل البيع</NuxtLink>
-        </div>
-        <div v-if="!data?.latestSales?.length" class="soft-card p-6 text-center text-muted">لا توجد عمليات بيع بعد</div>
-        <div v-for="s in data?.latestSales" :key="s.id" class="history-card">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="font-black">{{ s.car?.brand }} {{ s.car?.model }}</div>
-              <div class="mt-1 text-sm text-muted">العميل: {{ s.customer?.fullName }} <span v-if="s.customer?.phone">- {{ s.customer.phone }}</span></div>
-              <div class="mt-1 text-xs text-muted">تاريخ البيع: {{ dateText(s.saleDate) }} <span v-if="nextInstallment(s)">- موعد القسط: {{ dateText(nextInstallment(s)?.dueDate) }}</span></div>
-            </div>
-            <span class="rounded-xl bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-500">بيع</span>
-          </div>
-          <div class="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-            <div class="soft-card p-3"><span class="text-muted">القيمة</span><b class="block">{{ money(s.salePrice, s.currency) }}</b></div>
-            <div class="soft-card p-3"><span class="text-muted">الواصل</span><b class="block text-emerald-500">{{ money(s.paidAmount, s.currency) }}</b></div>
-            <div class="soft-card p-3"><span class="text-muted">الباقي</span><b class="block text-amber-500">{{ money(s.remainingAmount, s.currency) }}</b></div>
-            <div class="soft-card p-3"><span class="text-muted">الحالة</span><b class="block">{{ s.remainingAmount > 0 ? 'عليه قسط' : 'مسدد' }}</b></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card p-4 md:p-5">
-        <div class="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 class="text-xl font-black">السيارات التي تم شراؤها</h2>
-            <p class="text-sm text-muted">السجل المختصر مع الواصل والباقي.</p>
-          </div>
-          <NuxtLink to="/purchases" class="btn-secondary btn py-2 text-xs">كل الشراء</NuxtLink>
-        </div>
-        <div v-if="!data?.latestPurchases?.length" class="soft-card p-6 text-center text-muted">لا توجد عمليات شراء بعد</div>
-        <div v-for="p in data?.latestPurchases" :key="p.id" class="history-card">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="font-black">{{ p.carName }}</div>
-              <div class="mt-1 text-sm text-muted">صاحب السيارة: {{ p.sellerName }} <span v-if="p.sellerPhone">- {{ p.sellerPhone }}</span></div>
-              <div class="mt-1 text-xs text-muted">من تاريخ: {{ dateText(p.fromDate) }} - موعد التسديد: {{ p.dueDate ? dateText(p.dueDate) : '-' }}</div>
-            </div>
-            <span class="rounded-xl bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-500">شراء</span>
-          </div>
-          <div class="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-            <div class="soft-card p-3"><span class="text-muted">سعر السيارة</span><b class="block">{{ money(p.totalAmount, p.currency) }}</b></div>
-            <div class="soft-card p-3"><span class="text-muted">الواصل</span><b class="block text-emerald-500">{{ money(p.paidAmount, p.currency) }}</b></div>
-            <div class="soft-card p-3"><span class="text-muted">الباقي</span><b class="block text-amber-500">{{ money(p.remainingAmount, p.currency) }}</b></div>
-            <div class="soft-card p-3"><span class="text-muted">الحالة</span><b class="block">{{ purchaseStatus(p.status) }}</b></div>
-          </div>
-          <div v-if="Array.isArray(p.imageUrls) && p.imageUrls.length" class="mt-3 flex gap-2 overflow-x-auto">
-            <img v-for="(img, i) in p.imageUrls" :key="i" :src="img" class="h-16 w-20 rounded-xl border object-cover" style="border-color: var(--border)" />
-          </div>
-        </div>
-      </div>
     </div>
   </section>
 </template>
@@ -184,125 +126,49 @@
 <script setup lang="ts">
 const auth = useAuthStore()
 const { data, refresh } = useLazyFetch<any>('/api/dashboard')
-const mode = ref<'sale' | 'purchase'>('sale')
+const mode = ref<'sale' | 'purchase'>('purchase')
 const saving = ref(false)
 const message = ref('')
 const messageType = ref<'ok' | 'error'>('ok')
 const today = new Date().toISOString().slice(0, 10)
 const quickImages = ref<string[]>([])
 
-const quick = reactive({
-  ownerName: '',
-  carName: '',
-  totalAmount: 0,
-  paidAmount: 0,
-  remainingAmount: 0,
-  durationUnit: 'DAYS' as 'DAYS' | 'MONTHS',
-  durationValue: 0,
-  fromDate: today,
-  phone: '',
-  currency: 'IQD' as 'IQD' | 'USD',
-  notes: ''
-})
+const quick = reactive({ ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS' as 'DAYS' | 'MONTHS', durationValue: 0, fromDate: today, phone: '', currency: 'IQD' as 'IQD' | 'USD', notes: '' })
 
 const userInitial = computed(() => (auth.user?.fullName || auth.user?.username || 'م').trim().slice(0, 1))
 const purchaseRemaining = computed(() => Math.max(Number(quick.totalAmount || 0) - Number(quick.paidAmount || 0), 0))
 const totalQuick = computed(() => mode.value === 'purchase' ? Number(quick.totalAmount || 0) : Number(quick.paidAmount || 0) + Number(quick.remainingAmount || 0))
 const quickDueText = computed(() => dateText(calculateDueDate()))
 
-function notify(text: string, type: 'ok' | 'error' = 'ok') {
-  message.value = text
-  messageType.value = type
-  setTimeout(() => { message.value = '' }, 3500)
-}
-
-function calculateDueDate() {
-  const d = quick.fromDate ? new Date(quick.fromDate) : new Date()
-  const value = Math.max(0, Number(quick.durationValue || 0))
-  if (quick.durationUnit === 'MONTHS') d.setMonth(d.getMonth() + value)
-  else d.setDate(d.getDate() + value)
-  return d
-}
-
-function fileToData(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-async function onQuickFiles(event: any) {
-  quickImages.value = []
-  for (const file of Array.from(event.target.files || []) as File[]) quickImages.value.push(await fileToData(file))
-}
-
-function resetQuick() {
-  Object.assign(quick, {
-    ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS', durationValue: 0, fromDate: today, phone: '', currency: 'IQD', notes: ''
-  })
-  quickImages.value = []
-}
-
-async function refreshAll() {
-  await refresh()
-}
-
-
-function nextInstallment(s: any) {
-  return Array.isArray(s?.installments) ? s.installments.find((i: any) => i.status !== 'PAID') : null
-}
-
-function purchaseStatus(s: string) {
-  return ({ OPEN: 'مفتوح', PAID: 'مدفوع', LATE: 'متأخر' } as any)[s] || s || '-'
-}
+function notify(text: string, type: 'ok' | 'error' = 'ok') { message.value = text; messageType.value = type; setTimeout(() => { message.value = '' }, 3500) }
+function calculateDueDate() { const d = quick.fromDate ? new Date(quick.fromDate) : new Date(); const value = Math.max(0, Number(quick.durationValue || 0)); if (quick.durationUnit === 'MONTHS') d.setMonth(d.getMonth() + value); else d.setDate(d.getDate() + value); return d }
+function fileToData(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file) }) }
+async function onQuickFiles(event: any) { quickImages.value = []; for (const file of Array.from(event.target.files || []) as File[]) quickImages.value.push(await fileToData(file)) }
+function resetQuick() { Object.assign(quick, { ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS', durationValue: 0, fromDate: today, phone: '', currency: 'IQD', notes: '' }); quickImages.value = [] }
+async function refreshAll() { await refresh() }
 
 async function submitQuick() {
   if (!quick.ownerName || !quick.carName) return notify('اكتب الاسم واسم السيارة أولاً', 'error')
   if (totalQuick.value <= 0) return notify(mode.value === 'purchase' ? 'اكتب سعر السيارة الكلي أولاً' : 'اكتب الواصل أو الباقي حتى يتم تنفيذ العملية', 'error')
   saving.value = true
   try {
-    const body = {
-      carName: quick.carName,
-      totalAmount: mode.value === 'purchase' ? Number(quick.totalAmount || 0) : undefined,
-      paidAmount: Number(quick.paidAmount || 0),
-      remainingAmount: mode.value === 'purchase' ? purchaseRemaining.value : Number(quick.remainingAmount || 0),
-      currency: quick.currency,
-      durationUnit: quick.durationUnit,
-      durationValue: Number(quick.durationValue || 0),
-      fromDate: quick.fromDate,
-      documentImages: quickImages.value,
-      notes: quick.notes
-    }
-    if (mode.value === 'sale') {
-      await $fetch('/api/quick/sale', { method: 'POST', body: { ...body, customerName: quick.ownerName, customerPhone: quick.phone } })
-      notify('تم تنفيذ بيع السيارة وتحديث سجل المبيعات')
-    } else {
-      await $fetch('/api/quick/purchase', { method: 'POST', body: { ...body, sellerName: quick.ownerName, sellerPhone: quick.phone, createCar: true } })
-      notify('تم تنفيذ شراء السيارة وإضافتها للمخزن')
-    }
-    resetQuick()
-    await refresh()
-  } catch (error: any) {
-    notify(error?.data?.message || 'تعذر تنفيذ العملية', 'error')
-  } finally {
-    saving.value = false
-  }
+    const body = { carName: quick.carName, totalAmount: mode.value === 'purchase' ? Number(quick.totalAmount || 0) : undefined, paidAmount: Number(quick.paidAmount || 0), remainingAmount: mode.value === 'purchase' ? purchaseRemaining.value : Number(quick.remainingAmount || 0), currency: quick.currency, durationUnit: quick.durationUnit, durationValue: Number(quick.durationValue || 0), fromDate: quick.fromDate, documentImages: quickImages.value, notes: quick.notes }
+    if (mode.value === 'sale') { await $fetch('/api/quick/sale', { method: 'POST', body: { ...body, customerName: quick.ownerName, customerPhone: quick.phone } }); notify('تم تنفيذ بيع السيارة وتحديث سجل المبيعات') }
+    else { await $fetch('/api/quick/purchase', { method: 'POST', body: { ...body, sellerName: quick.ownerName, sellerPhone: quick.phone, createCar: true } }); notify('تم تنفيذ شراء السيارة وإضافتها للمخزن') }
+    resetQuick(); await refresh()
+  } catch (error: any) { notify(error?.data?.message || 'تعذر تنفيذ العملية', 'error') }
+  finally { saving.value = false }
 }
 </script>
 
 <style scoped>
-.history-card {
-  margin-bottom: .75rem;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  border-radius: 1.25rem;
-  padding: 1rem;
-}
+.quick-action { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.25rem; min-height:92px; border:1px solid var(--border); background:var(--panel); border-radius:1.5rem; padding:1rem; font-weight:900; transition:.2s ease; }
+.quick-action small { color:var(--muted); font-size:.72rem; }
+.quick-action-active { color:#fff; transform:translateY(-1px); box-shadow:0 14px 35px rgba(0,0,0,.22); }
+.quick-action-active.purchase { background:linear-gradient(135deg,#059669,#064e3b); border-color:rgba(16,185,129,.55); }
+.quick-action-active.sale { background:linear-gradient(135deg,#2563eb,#1e3a8a); border-color:rgba(59,130,246,.55); }
 @media (max-width: 640px) {
   .mobile-dashboard :deep(.form-field) { gap: .35rem; }
   .mobile-dashboard :deep(.input) { min-height: 48px; font-size: 16px; }
-  .history-card { padding: .85rem; }
 }
 </style>

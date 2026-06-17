@@ -1,3 +1,4 @@
+import { ensurePurchaseTable } from '../utils/schema'
 import { prisma } from '../utils/db'
 import { syncInstallments } from '../utils/installments'
 import { requirePermission } from '../utils/auth'
@@ -5,6 +6,7 @@ import { getUsdRate, n, toIqd, roundMoney } from '../utils/money'
 
 export default defineEventHandler(async (event) => {
   await requirePermission(event,'dashboard')
+  await ensurePurchaseTable()
   await syncInstallments(prisma)
   const startToday = new Date(); startToday.setHours(0,0,0,0)
   const sixMonths = Array.from({ length: 6 }, (_, idx) => {

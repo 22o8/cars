@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ensurePurchaseTable } from '../../utils/schema'
 import { prisma } from '../../utils/db'
 import { requirePermission } from '../../utils/auth'
 import { audit } from '../../utils/audit'
@@ -37,6 +38,7 @@ function calculateDueDate(fromDate: Date, unit: 'DAYS' | 'MONTHS', value: number
 
 export default defineEventHandler(async (event) => {
   const user = await requirePermission(event, 'purchases')
+  await ensurePurchaseTable()
   const body = schema.parse(await readBody(event))
 
   const totalInput = Number(body.totalAmount || 0)
