@@ -1,5 +1,5 @@
 export const useTheme = () => {
-  const theme = useState<'dark' | 'light'>('theme', () => 'dark')
+  const theme = useState<'dark' | 'light'>('theme', () => 'light')
 
   function apply() {
     if (process.client) {
@@ -11,7 +11,7 @@ export const useTheme = () => {
   function initTheme() {
     if (process.client) {
       const saved = localStorage.getItem('adp_theme') as 'dark' | 'light' | null
-      theme.value = saved || 'dark'
+      theme.value = saved || 'light'
       apply()
     }
   }

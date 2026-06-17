@@ -6,8 +6,8 @@
       style="background: linear-gradient(180deg, var(--sidebar), var(--sidebar-2)); border-color: var(--border)"
     >
       <div class="px-6 py-6 border-b" style="border-color: var(--border)">
-        <div class="text-2xl font-black tracking-tight">AutoDealer Pro</div>
-        <div class="mt-2 text-xs text-slate-400">نظام ويب لإدارة معارض السيارات</div>
+        <div class="text-2xl font-black tracking-tight">نظام إدارة المعرض</div>
+        <div class="mt-2 text-xs text-slate-400">واجهة بسيطة لإدارة البيع والشراء</div>
         <div v-if="auth.user" class="mt-5 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
           <img v-if="auth.user.profileImage" :src="auth.user.profileImage" class="h-12 w-12 rounded-2xl object-cover" alt="صورة المستخدم" />
           <div v-else class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600/25 text-lg font-black text-white">{{ userInitial }}</div>
@@ -107,7 +107,7 @@
             <img v-if="auth.user.profileImage" :src="auth.user.profileImage" class="h-12 w-12 rounded-2xl object-cover" alt="صورة المستخدم" />
             <div v-else class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600/25 text-lg font-black text-white">{{ userInitial }}</div>
             <div>
-              <div class="text-xl font-black">AutoDealer Pro</div>
+              <div class="text-xl font-black">نظام إدارة المعرض</div>
               <div class="mt-1 text-xs text-slate-400">{{ auth.user.fullName }} - {{ roleLabel }}</div>
             </div>
           </div>
@@ -323,7 +323,7 @@ const mobileBottomMenu = computed(() => {
   return preferred.map(p => flat.value.find((x:any) => x.to === p)).filter(Boolean) as any[]
 })
 const isMobileHeaderReady = computed(() => auth.user && mobilePrimaryMenu.value.length > 0)
-const pageTitle = computed(() => flat.value.find((i:any) => route.path === i.to || route.path.startsWith(i.to + '/'))?.label || 'AutoDealer Pro')
+const pageTitle = computed(() => flat.value.find((i:any) => route.path === i.to || route.path.startsWith(i.to + '/'))?.label || 'نظام إدارة المعرض')
 async function logout() {
   await $oneSignal?.logout?.()
   await $fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })

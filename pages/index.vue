@@ -1,13 +1,13 @@
 <template>
-  <section class="page-pad mobile-dashboard">
-    <div class="dashboard-hero mb-5 rounded-[2rem] border p-4 md:p-6" style="border-color: var(--border); background: radial-gradient(circle at 12% 20%, rgba(47,125,246,.18), transparent 32%), var(--panel)">
+  <section class="page-pad mobile-dashboard simple-dashboard">
+    <div class="simple-hero mb-4 rounded-[1.4rem] border p-4 md:p-6">
       <div class="flex items-center justify-between gap-4">
         <div class="flex items-center gap-3">
           <img v-if="auth.user?.profileImage" :src="auth.user.profileImage" class="h-14 w-14 rounded-2xl object-cover shadow-xl" alt="صورة الحساب" />
           <div v-else class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-slate-950 text-2xl font-black text-white shadow-xl">{{ userInitial }}</div>
           <div>
-            <p class="text-xs font-bold text-muted">نظام إدارة المعرض</p>
-            <h1 class="text-xl font-black md:text-3xl">أهلاً {{ auth.user?.fullName || 'مدير النظام' }}</h1>
+            <p class="text-xs font-bold text-muted">مرحباً بك</p>
+            <h1 class="text-2xl font-black md:text-3xl">{{ auth.user?.fullName || 'مدير النظام' }}</h1>
           </div>
         </div>
         <button class="btn-secondary btn hidden md:inline-flex" @click="refreshAll">تحديث</button>
@@ -18,14 +18,14 @@
       {{ message }}
     </div>
 
-    <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div class="simple-stats mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
       <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مبيعات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.debtIqd || 0, 'IQD') }}</div></div>
       <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مشتريات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.purchaseDebtIqd || 0, 'IQD') }}</div></div>
       <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مبيعات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPaidIqd || 0, 'IQD') }}</div></div>
       <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مشتريات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPurchasePaidIqd || 0, 'IQD') }}</div></div>
     </div>
 
-    <div class="mb-5 grid grid-cols-2 gap-3">
+    <div class="simple-actions mb-4 grid grid-cols-2 gap-3">
       <button class="quick-action" :class="mode === 'purchase' ? 'quick-action-active purchase' : ''" @click="mode = 'purchase'">
         <span class="text-2xl">🚗</span>
         <b>شراء سيارة</b>
@@ -38,11 +38,11 @@
       </button>
     </div>
 
-    <div class="card mb-5 overflow-hidden p-4 md:p-5">
+    <div class="simple-form-card card mb-5 overflow-hidden p-4 md:p-5">
       <div class="mb-4 flex items-center justify-between gap-2">
         <div>
           <h2 class="text-xl font-black">{{ mode === 'purchase' ? 'تنفيذ شراء سريع' : 'تنفيذ بيع سريع' }}</h2>
-          <p class="text-sm text-muted">حقول قليلة، وحساب الباقي والموعد تلقائياً.</p>
+          <p class="text-sm text-muted">أدخل المعلومات الأساسية فقط، والباقي يحسب تلقائياً.</p>
         </div>
         <NuxtLink to="/records" class="btn-secondary btn py-2 text-xs">السجلات</NuxtLink>
       </div>
