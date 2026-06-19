@@ -715,3 +715,20 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
     box-shadow: 0 12px 28px rgba(15,23,42,.06);
   }
 }
+.quick-action-icon {
+  display: inline-flex;
+  height: 2.5rem;
+  min-width: 4.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 84%, transparent);
+  font-size: .95rem !important;
+  font-weight: 900;
+}
+.quick-action-active .quick-action-icon {
+  border-color: rgba(255,255,255,.38);
+  background: rgba(255,255,255,.16);
+  color: #fff;
+}

@@ -27,12 +27,12 @@
 
     <div class="simple-actions mb-4 grid grid-cols-2 gap-3">
       <button class="quick-action" :class="mode === 'purchase' ? 'quick-action-active purchase' : ''" @click="mode = 'purchase'">
-        <span class="text-2xl">🚗</span>
+        <span class="quick-action-icon">شراء</span>
         <b>شراء سيارة</b>
         <small>سعر كلي، واصل، مدة</small>
       </button>
       <button class="quick-action" :class="mode === 'sale' ? 'quick-action-active sale' : ''" @click="mode = 'sale'">
-        <span class="text-2xl">🧾</span>
+        <span class="quick-action-icon">بيع</span>
         <b>بيع سيارة</b>
         <small>واصل، باقي، موعد</small>
       </button>

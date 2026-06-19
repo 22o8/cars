@@ -101,7 +101,7 @@
             <td>{{ dateText(p.fromDate) }}</td>
             <td>{{ p.dueDate ? dateText(p.dueDate) : '-' }}</td>
             <td><span class="badge">{{ status(p.status) }}</span></td>
-            <td><div class="action-bar"><button class="btn-secondary btn py-2" @click="edit(p)">تعديل</button><button class="btn-danger btn py-2" @click="remove(p)">حذف</button></div></td>
+            <td><div class="action-bar"><button v-if="Number(p.remainingAmount || 0) > 0" class="btn-primary btn py-2" @click="pay(p)">تسديد</button><button class="btn-secondary btn py-2" @click="edit(p)">تعديل</button><button class="btn-danger btn py-2" @click="remove(p)">حذف</button></div></td>
           </tr>
         </tbody>
       </table>
@@ -146,6 +146,7 @@ async function save(){
   finally{ busy.value=false }
 }
 function edit(p:any){ editingId.value=p.id; Object.assign(form,{ sellerName:p.sellerName, sellerPhone:p.sellerPhone||'', carName:p.carName, brand:p.brand||'', model:p.model||'', year:p.year||null, totalAmount:Number(p.totalAmount||0), paidAmount:Number(p.paidAmount||0), currency:p.currency, durationDays:p.durationDays||0, fromDate:String(p.fromDate).slice(0,10), notes:p.notes||'', createCar:false }); images.value=Array.isArray(p.imageUrls)?[...p.imageUrls]:[]; window.scrollTo({top:0,behavior:'smooth'}) }
+async function pay(p:any){ const remaining=Number(p.remainingAmount||0); if(remaining<=0) return notify('عملية الشراء مسددة بالكامل'); const value=prompt(`اكتب مبلغ التسديد أو اتركه فارغاً لتسديد الباقي كامل: ${remaining}`); if(value===null) return; const amount=value.trim()===''?remaining:Number(value); if(!Number.isFinite(amount)||amount<=0) return notify('مبلغ التسديد غير صحيح','error'); try{ const res:any=await $fetch(`/api/purchases/${p.id}/pay`,{method:'POST',body:{amount}}); await refresh(); const sent=Number(res?.notification?.sent||0); notify(sent>0?'تم التسديد وإرسال إشعار':'تم التسديد، ولم يتم إرسال إشعار') }catch(e:any){ notify(e?.data?.message||'تعذر تسديد دفعة الشراء','error') } }
 async function remove(p:any){ if(!confirm('هل تريد حذف عملية الشراء؟')) return; try{ await $fetch(`/api/purchases/${p.id}`,{method:'DELETE'}); await refresh(); notify('تم حذف عملية الشراء') }catch(e:any){ notify(e?.data?.message||'تعذر حذف الشراء','error') } }
 function status(s:string){ return { OPEN:'مفتوح', PAID:'مدفوع', LATE:'متأخر' }[s] || s }
 </script>

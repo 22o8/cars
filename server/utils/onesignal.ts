@@ -177,6 +177,83 @@ export async function sendInstallmentPaidOneSignalAlert(info: {
   return sendOneSignalToAll(title, body, '/installments', `onesignal-installment-paid-${info.installmentId}-${Date.now()}`)
 }
 
+
+export async function sendPurchasePaidOneSignalAlert(info: {
+  purchaseId: string
+  sellerName: string
+  carName: string
+  amount: number
+  currency: string
+  fullyPaid: boolean
+}) {
+  const amount = Number(info.amount || 0).toLocaleString('en-US')
+  const title = info.fullyPaid ? 'تم تسديد دفعة شراء بالكامل' : 'تم تسجيل دفعة شراء'
+  const body = `${info.sellerName} - ${info.carName} - المبلغ ${amount} ${info.currency}`
+  return sendOneSignalToAll(title, body, '/records', `onesignal-purchase-paid-${info.purchaseId}-${Date.now()}`)
+}
+
+export async function sendDuePurchaseOneSignalAlerts() {
+  const now = new Date()
+  const repeatMinutes = installmentAlertRepeatMinutes()
+  const repeatMs = repeatMinutes * 60 * 1000
+  const bucket = Math.floor(now.getTime() / repeatMs)
+
+  const purchases = await prisma.purchase.findMany({
+    where: { remainingAmount: { gt: 0 }, dueDate: { lte: now } },
+    orderBy: { dueDate: 'asc' }
+  }).catch(() => [])
+
+  const users = await prisma.user.findMany({
+    where: { active: true },
+    select: { id: true, username: true, role: true, permissions: true }
+  })
+
+  const targetUsers = users.filter((u: any) =>
+    u.role === 'ADMIN' ||
+    u.role === 'ACCOUNTANT' ||
+    (Array.isArray(u.permissions) && (u.permissions.includes('purchases') || u.permissions.includes('accounts')))
+  )
+
+  let checked = 0
+  let sent = 0
+  let failed = 0
+  let skipped = 0
+  const details: any[] = []
+
+  for (const p of purchases as any[]) {
+    const remaining = Number(p.remainingAmount || 0)
+    const dueDate = p.dueDate ? new Date(p.dueDate).toLocaleDateString('ar-IQ') : '-'
+    const tag = `onesignal-purchase-due-${p.id}-${bucket}`
+    const title = 'تنبيه دفعة شراء مستحقة أو متأخرة'
+    const body = `${p.sellerName} - ${p.carName} - المتبقي ${remaining.toLocaleString('en-US')} ${p.currency} - الاستحقاق ${dueDate}`
+
+    const userIds: string[] = []
+    for (const user of targetUsers as any[]) {
+      const exists = await prisma.notificationDelivery.findUnique({ where: { userId_tag: { userId: user.id, tag } } }).catch(() => null)
+      if (exists) { skipped++; continue }
+      userIds.push(user.id)
+      checked++
+    }
+
+    if (!userIds.length) continue
+
+    const result = await sendWithFallbackToAll(userIds, title, body, '/records', tag)
+    sent += result.sent || 0
+    failed += result.failed || 0
+    details.push({ purchaseId: p.id, seller: p.sellerName, sent: result.sent || 0, ok: result.ok, status: result.status, data: result.data })
+
+    if (result.ok) {
+      for (const userId of userIds) {
+        await prisma.notificationDelivery.create({
+          data: { userId, title, body, tag, installmentId: null }
+        }).catch(() => null)
+      }
+    }
+  }
+
+  return { purchases: purchases.length, users: targetUsers.length, checked, skipped, sent, failed, details }
+}
+
 export async function sendDueInstallmentOneSignalAlerts() {
   const now = new Date()
   const repeatMinutes = installmentAlertRepeatMinutes()

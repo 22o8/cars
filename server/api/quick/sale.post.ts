@@ -58,19 +58,44 @@ export default defineEventHandler(async (event) => {
       }
     })
 
-    const car = await tx.car.create({
-      data: {
-        brand: carParts.brand,
-        model: carParts.model,
-        year: new Date().getFullYear(),
-        purchasePrice: 0,
-        salePrice,
-        currency: body.currency,
-        status: 'SOLD',
-        imageUrls: docs,
-        description: `تمت إضافتها من التنفيذ السريع للبيع. العميل: ${body.customerName}`
-      }
+    let car = await tx.car.findFirst({
+      where: {
+        status: 'AVAILABLE',
+        OR: [
+          { model: { contains: body.carName, mode: 'insensitive' } },
+          { brand: { contains: carParts.brand, mode: 'insensitive' } },
+          { description: { contains: body.carName, mode: 'insensitive' } }
+        ]
+      },
+      orderBy: { createdAt: 'asc' }
     })
+
+    if (car) {
+      car = await tx.car.update({
+        where: { id: car.id },
+        data: {
+          salePrice,
+          currency: body.currency,
+          status: 'SOLD',
+          imageUrls: docs.length ? docs : car.imageUrls,
+          description: `${car.description || ''} تم بيعها من التنفيذ السريع. العميل: ${body.customerName}`.trim()
+        }
+      })
+    } else {
+      car = await tx.car.create({
+        data: {
+          brand: carParts.brand,
+          model: carParts.model,
+          year: new Date().getFullYear(),
+          purchasePrice: 0,
+          salePrice,
+          currency: body.currency,
+          status: 'SOLD',
+          imageUrls: docs,
+          description: `تمت إضافتها من التنفيذ السريع للبيع. العميل: ${body.customerName}`
+        }
+      })
+    }
 
     const createdSale = await tx.sale.create({
       data: {
