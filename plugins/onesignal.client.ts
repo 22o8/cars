@@ -20,6 +20,20 @@ function loadOneSignalSdk() {
   })
 }
 
+async function waitForOneSignalRegistration() {
+  if (!('serviceWorker' in navigator)) return false
+  try {
+    await navigator.serviceWorker.ready
+    const registrations = await navigator.serviceWorker.getRegistrations()
+    return registrations.some((reg) => {
+      const scriptUrl = reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || ''
+      return scriptUrl.includes('OneSignalSDKWorker.js') || scriptUrl.includes('OneSignalSDKUpdaterWorker.js')
+    })
+  } catch {
+    return false
+  }
+}
+
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
   const appId = config.public.oneSignalAppId as string
@@ -30,43 +44,52 @@ export default defineNuxtPlugin(() => {
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return false
 
     window.__adpOneSignalInitPromise = (async () => {
-      await loadOneSignalSdk()
-      window.OneSignalDeferred = window.OneSignalDeferred || []
+      try {
+        await loadOneSignalSdk()
+        window.OneSignalDeferred = window.OneSignalDeferred || []
 
-      return await new Promise<boolean>((resolve) => {
-        window.OneSignalDeferred!.push(async function (OneSignal: any) {
-          try {
-            await OneSignal.init({
-            appId,
-            allowLocalhostAsSecureOrigin: true,
-            serviceWorkerPath: 'OneSignalSDKWorker.js',
-            serviceWorkerUpdaterPath: 'OneSignalSDKUpdaterWorker.js',
-            serviceWorkerParam: { scope: '/' },
-            notifyButton: { enable: false },
-            promptOptions: {
-              slidedown: {
-                prompts: [
-                  {
-                    type: 'push',
-                    autoPrompt: false,
-                    text: {
-                      actionMessage: 'فعّل إشعارات الأقساط والتنبيهات المهمة على هذا الجهاز.',
-                      acceptButton: 'تفعيل',
-                      cancelButton: 'لاحقاً'
-                    }
+        return await new Promise<boolean>((resolve) => {
+          window.OneSignalDeferred!.push(async function (OneSignal: any) {
+            try {
+              await OneSignal.init({
+                appId,
+                allowLocalhostAsSecureOrigin: true,
+                serviceWorkerPath: '/OneSignalSDKWorker.js',
+                serviceWorkerUpdaterPath: '/OneSignalSDKUpdaterWorker.js',
+                serviceWorkerParam: { scope: '/' },
+                notifyButton: { enable: false },
+                promptOptions: {
+                  slidedown: {
+                    prompts: [
+                      {
+                        type: 'push',
+                        autoPrompt: false,
+                        text: {
+                          actionMessage: 'فعّل إشعارات الأقساط والتنبيهات المهمة على هذا الجهاز.',
+                          acceptButton: 'تفعيل',
+                          cancelButton: 'لاحقاً'
+                        }
+                      }
+                    ]
                   }
-                ]
-              }
+                }
+              })
+
+              await waitForOneSignalRegistration()
+              window.__adpOneSignalReady = true
+              resolve(true)
+            } catch (e) {
+              console.error('OneSignal init failed', e)
+              window.__adpOneSignalInitPromise = undefined
+              resolve(false)
             }
           })
-            window.__adpOneSignalReady = true
-            resolve(true)
-          } catch (e) {
-            console.error('OneSignal init failed', e)
-            resolve(false)
-          }
         })
-      })
+      } catch (e) {
+        console.error('OneSignal SDK load failed', e)
+        window.__adpOneSignalInitPromise = undefined
+        return false
+      }
     })()
 
     return window.__adpOneSignalInitPromise
@@ -77,7 +100,8 @@ export default defineNuxtPlugin(() => {
     const ready = await initOneSignal()
     if (!ready) return false
     return await new Promise<boolean>((resolve) => {
-      window.OneSignalDeferred!.push(async function (OneSignal: any) {
+      window.OneSignalDeferred = window.OneSignalDeferred || []
+      window.OneSignalDeferred.push(async function (OneSignal: any) {
         try {
           await OneSignal.login(userId)
           resolve(true)
@@ -94,7 +118,8 @@ export default defineNuxtPlugin(() => {
     if (!ready) return { ok: false, reason: 'not-ready' }
 
     return await new Promise<{ ok: boolean; permission?: string; reason?: string }>((resolve) => {
-      window.OneSignalDeferred!.push(async function (OneSignal: any) {
+      window.OneSignalDeferred = window.OneSignalDeferred || []
+      window.OneSignalDeferred.push(async function (OneSignal: any) {
         try {
           if (userId) await OneSignal.login(userId)
 

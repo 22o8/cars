@@ -1,7 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-06-08',
   devtools: { enabled: false },
-  modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt', '@vite-pwa/nuxt'],
+  modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt'],
   css: ['~/assets/css/main.css'],
   experimental: { payloadExtraction: false },
   app: {
@@ -16,6 +16,7 @@ export default defineNuxtConfig({
       link: [
         { rel: 'icon', href: '/favicon.ico' },
         { rel: 'apple-touch-icon', href: '/icons/icon-192.png' },
+        { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }
       ]
     }
@@ -39,24 +40,5 @@ export default defineNuxtConfig({
       '/api/**': { headers: { 'cache-control': 'no-store' } },
       '/icons/**': { headers: { 'cache-control': 'public,max-age=31536000,immutable' } }
     }
-  },
-  pwa: {
-    registerType: 'prompt',
-    injectRegister: false,
-    manifest: {
-      name: 'نظام إدارة المعرض',
-      short_name: 'إدارة المعرض',
-      description: 'نظام إدارة المعرض للسيارات والأقساط والعملاء',
-      theme_color: '#07111f',
-      background_color: '#07111f',
-      display: 'standalone',
-      orientation: 'portrait-primary',
-      icons: [
-        { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-        { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
-      ]
-    },
-    workbox: { navigateFallback: '/', globPatterns: ['**/*.{js,css,html,svg,png,ico}'] }
   }
 })
