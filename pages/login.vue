@@ -1,43 +1,26 @@
 <template>
   <main class="login-shell min-h-screen overflow-hidden bg-slate-950 text-slate-950" dir="rtl">
     <section class="grid min-h-screen lg:grid-cols-[0.95fr_1.05fr]">
-      <div class="relative hidden lg:flex flex-col justify-between overflow-hidden p-12 text-white">
+      <div class="relative hidden lg:flex flex-col items-center justify-center overflow-hidden p-12 text-center text-white">
         <div class="absolute inset-0 bg-[radial-gradient(circle_at_20%_12%,rgba(47,125,246,.42),transparent_34%),radial-gradient(circle_at_82%_72%,rgba(20,184,166,.22),transparent_30%),linear-gradient(135deg,#06101f,#10295a)]"></div>
         <div class="absolute inset-0 opacity-[.18]" style="background-image: linear-gradient(rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.12) 1px, transparent 1px); background-size: 42px 42px"></div>
-        <div class="relative z-10 flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-2xl">
-              <span class="h-5 w-5 rounded-lg bg-blue-400 shadow-[0_0_28px_rgba(96,165,250,.9)]"></span>
-            </div>
-            <div>
-              <h1 class="text-2xl font-black tracking-tight">AutoDealer Pro</h1>
-              <p class="text-xs text-blue-100/70">نظام إدارة معارض السيارات</p>
-            </div>
-          </div>
-          <span class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-blue-100">PWA Secure</span>
-        </div>
 
-        <div class="relative z-10 max-w-2xl">
-          <p class="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-5 py-2 text-sm font-bold text-blue-100">منصة احترافية للسيارات والعملاء والأقساط والفواتير</p>
-          <h2 class="text-5xl font-black leading-tight tracking-tight xl:text-6xl">إدارة معرضك من مكان واحد بأمان وسرعة.</h2>
-          <p class="mt-6 max-w-xl text-lg leading-9 text-slate-300">دخول محمي، صلاحيات للموظفين، متابعة مستحقات، إشعارات، وتقارير مباشرة من قاعدة البيانات.</p>
-          <div class="mt-8 grid max-w-xl grid-cols-3 gap-3 text-center">
-            <div class="rounded-3xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-              <b class="block text-2xl">24/7</b>
-              <span class="mt-1 block text-xs text-slate-300">متابعة العمل</span>
-            </div>
-            <div class="rounded-3xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-              <b class="block text-2xl">PWA</b>
-              <span class="mt-1 block text-xs text-slate-300">هاتف وحاسوب</span>
-            </div>
-            <div class="rounded-3xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-              <b class="block text-2xl">Role</b>
-              <span class="mt-1 block text-xs text-slate-300">صلاحيات دقيقة</span>
-            </div>
+        <div class="relative z-10 flex max-w-2xl flex-col items-center gap-7">
+          <div class="flex h-24 w-24 items-center justify-center rounded-[2rem] border border-white/15 bg-white/10 shadow-2xl backdrop-blur">
+            <span class="h-10 w-10 rounded-2xl bg-blue-400 shadow-[0_0_34px_rgba(96,165,250,.9)]"></span>
           </div>
-        </div>
 
-        <div class="relative z-10 text-sm text-slate-400">بيانات الدخول لا تُعرض علناً. استخدم حساب المدير أو حساب الموظف المخصص.</div>
+          <div>
+            <h1 class="text-3xl font-black tracking-tight">AutoDealer Pro</h1>
+            <p class="mt-2 text-sm font-bold text-blue-100/80">نظام إدارة معارض السيارات</p>
+          </div>
+
+          <span class="rounded-full border border-white/15 bg-white/10 px-5 py-2 text-sm font-black text-blue-100 shadow-xl backdrop-blur">PWA Secure</span>
+
+          <p class="inline-flex rounded-full border border-white/15 bg-white/10 px-6 py-3 text-base font-black leading-8 text-blue-100 backdrop-blur">منصة احترافية للسيارات والعملاء والأقساط والفواتير</p>
+
+          <h2 class="text-5xl font-black leading-tight tracking-tight xl:text-6xl">إدارة معرضك من مكان واحد.</h2>
+        </div>
       </div>
 
       <div class="relative flex items-center justify-center bg-slate-100 p-5 lg:p-10">

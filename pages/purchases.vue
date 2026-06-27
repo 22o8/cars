@@ -42,9 +42,7 @@
         <FormField label="الباقي" hint="يحسب تلقائياً من المبلغ الكلي ناقص الواصل">
           <input :value="remaining" readonly class="input bg-slate-500/10" placeholder="الباقي">
         </FormField>
-        <FormField label="العملة" hint="عملة عملية الشراء">
-          <select v-model="form.currency" class="input"><option value="IQD">دينار عراقي</option><option value="USD">دولار</option></select>
-        </FormField>
+        <FormField label="العملة" hint="النظام يعمل بالدولار فقط"><input value="USD - دولار" readonly class="input bg-slate-500/10"></FormField>
         <FormField label="من تاريخ" hint="تاريخ بداية الاتفاق أو تاريخ الشراء">
           <input v-model="form.fromDate" type="date" class="input">
         </FormField>
@@ -84,9 +82,9 @@
 
     <div class="grid gap-4 md:grid-cols-4 mb-6">
       <div class="card p-4"><div class="text-muted text-sm">عمليات الشراء</div><b class="text-2xl">{{ purchases.length }}</b></div>
-      <div class="card p-4"><div class="text-muted text-sm">إجمالي الشراء</div><b class="text-2xl">{{ money(totalAmount, 'IQD') }}</b></div>
-      <div class="card p-4"><div class="text-muted text-sm">إجمالي الواصل</div><b class="text-2xl text-emerald-500">{{ money(totalPaid, 'IQD') }}</b></div>
-      <div class="card p-4"><div class="text-muted text-sm">ديون الشراء</div><b class="text-2xl text-amber-500">{{ money(totalRemaining, 'IQD') }}</b></div>
+      <div class="card p-4"><div class="text-muted text-sm">إجمالي الشراء</div><b class="text-2xl">{{ money(totalAmount, 'USD') }}</b></div>
+      <div class="card p-4"><div class="text-muted text-sm">إجمالي الواصل</div><b class="text-2xl text-emerald-500">{{ money(totalPaid, 'USD') }}</b></div>
+      <div class="card p-4"><div class="text-muted text-sm">ديون الشراء</div><b class="text-2xl text-amber-500">{{ money(totalRemaining, 'USD') }}</b></div>
     </div>
 
     <div class="card overflow-x-auto">
@@ -112,7 +110,7 @@
 <script setup lang="ts">
 const { data, refresh } = useLazyFetch<any[]>('/api/purchases', { default: () => [] })
 const purchases = computed(() => data.value || [])
-const empty = () => ({ sellerName:'', sellerPhone:'', carName:'', brand:'', model:'', year:null as number|null, totalAmount:0, paidAmount:0, currency:'IQD', durationDays:0, fromDate:new Date().toISOString().slice(0,10), notes:'', imageUrls:[] as string[], createCar:true })
+const empty = () => ({ sellerName:'', sellerPhone:'', carName:'', brand:'', model:'', year:null as number|null, totalAmount:0, paidAmount:0, currency:'USD', durationDays:0, fromDate:new Date().toISOString().slice(0,10), notes:'', imageUrls:[] as string[], createCar:true })
 const form = reactive<any>(empty())
 const images = ref<string[]>([])
 const editingId = ref('')
@@ -145,7 +143,7 @@ async function save(){
   }catch(e:any){ notify(e?.data?.message || 'تعذر حفظ عملية الشراء','error') }
   finally{ busy.value=false }
 }
-function edit(p:any){ editingId.value=p.id; Object.assign(form,{ sellerName:p.sellerName, sellerPhone:p.sellerPhone||'', carName:p.carName, brand:p.brand||'', model:p.model||'', year:p.year||null, totalAmount:Number(p.totalAmount||0), paidAmount:Number(p.paidAmount||0), currency:p.currency, durationDays:p.durationDays||0, fromDate:String(p.fromDate).slice(0,10), notes:p.notes||'', createCar:false }); images.value=Array.isArray(p.imageUrls)?[...p.imageUrls]:[]; window.scrollTo({top:0,behavior:'smooth'}) }
+function edit(p:any){ editingId.value=p.id; Object.assign(form,{ sellerName:p.sellerName, sellerPhone:p.sellerPhone||'', carName:p.carName, brand:p.brand||'', model:p.model||'', year:p.year||null, totalAmount:Number(p.totalAmount||0), paidAmount:Number(p.paidAmount||0), currency:'USD', durationDays:p.durationDays||0, fromDate:String(p.fromDate).slice(0,10), notes:p.notes||'', createCar:false }); images.value=Array.isArray(p.imageUrls)?[...p.imageUrls]:[]; window.scrollTo({top:0,behavior:'smooth'}) }
 async function pay(p:any){ const remaining=Number(p.remainingAmount||0); if(remaining<=0) return notify('عملية الشراء مسددة بالكامل'); const value=prompt(`اكتب مبلغ التسديد أو اتركه فارغاً لتسديد الباقي كامل: ${remaining}`); if(value===null) return; const amount=value.trim()===''?remaining:Number(value); if(!Number.isFinite(amount)||amount<=0) return notify('مبلغ التسديد غير صحيح','error'); try{ const res:any=await $fetch(`/api/purchases/${p.id}/pay`,{method:'POST',body:{amount}}); await refresh(); const sent=Number(res?.notification?.sent||0); notify(sent>0?'تم التسديد وإرسال إشعار':'تم التسديد، ولم يتم إرسال إشعار') }catch(e:any){ notify(e?.data?.message||'تعذر تسديد دفعة الشراء','error') } }
 async function remove(p:any){ if(!confirm('هل تريد حذف عملية الشراء؟')) return; try{ await $fetch(`/api/purchases/${p.id}`,{method:'DELETE'}); await refresh(); notify('تم حذف عملية الشراء') }catch(e:any){ notify(e?.data?.message||'تعذر حذف الشراء','error') } }
 function status(s:string){ return { OPEN:'مفتوح', PAID:'مدفوع', LATE:'متأخر' }[s] || s }

@@ -10,23 +10,21 @@ export function roundMoney(value: number): number {
 }
 
 export async function getUsdRate(prisma: PrismaClient): Promise<number> {
-  const setting = await prisma.dealerSetting.upsert({
+  await prisma.dealerSetting.upsert({
     where: { id: 1 },
-    update: {},
-    create: { id: 1, dealerName: 'AutoDealer Pro' }
+    update: { usdToIqdRate: 1 },
+    create: { id: 1, dealerName: 'AutoDealer Pro', usdToIqdRate: 1 }
   })
-  const rate = n(setting.usdToIqdRate)
-  return rate > 0 ? rate : 1310
+  return 1
 }
 
 export function toIqd(amount: any, currency: string | null | undefined, usdRate: number): number {
-  const value = n(amount)
-  return currency === 'USD' ? value * usdRate : value
+  return n(amount)
 }
 
 export function sumIqd(items: any[], amountKey: string, usdRate: number, filter?: (item: any) => boolean): number {
   return roundMoney(items.reduce((total, item) => {
     if (filter && !filter(item)) return total
-    return total + toIqd(item?.[amountKey], item?.currency, usdRate)
+    return total + n(item?.[amountKey])
   }, 0))
 }

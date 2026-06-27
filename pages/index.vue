@@ -19,10 +19,10 @@
     </div>
 
     <div class="simple-stats mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مبيعات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.debtIqd || 0, 'IQD') }}</div></div>
-      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مشتريات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.purchaseDebtIqd || 0, 'IQD') }}</div></div>
-      <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مبيعات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPaidIqd || 0, 'IQD') }}</div></div>
-      <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مشتريات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPurchasePaidIqd || 0, 'IQD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مبيعات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.debtIqd || 0, 'USD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي مشتريات</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.purchaseDebtIqd || 0, 'USD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مبيعات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPaidIqd || 0, 'USD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">واصل مشتريات</div><div class="mt-2 text-lg font-black text-emerald-500">{{ money(data?.totalPurchasePaidIqd || 0, 'USD') }}</div></div>
     </div>
 
     <div class="simple-actions mb-4 grid grid-cols-2 gap-3">
@@ -91,12 +91,7 @@
         <FormField label="رقم الهاتف" hint="اختياري">
           <input v-model.trim="quick.phone" class="input" placeholder="اختياري" />
         </FormField>
-        <FormField label="العملة" hint="عملة العملية">
-          <select v-model="quick.currency" class="input">
-            <option value="IQD">دينار عراقي</option>
-            <option value="USD">دولار</option>
-          </select>
-        </FormField>
+        <FormField label="العملة" hint="النظام يعمل بالدولار فقط"><input value="USD - دولار" readonly class="input bg-slate-500/10" /></FormField>
         <FormField label="المستمسكات أو الصور" hint="اختياري، التقاط صورة أو رفع ملف">
           <input type="file" accept="image/*" capture="environment" multiple class="input" @change="onQuickFiles" />
         </FormField>
@@ -133,7 +128,7 @@ const messageType = ref<'ok' | 'error'>('ok')
 const today = new Date().toISOString().slice(0, 10)
 const quickImages = ref<string[]>([])
 
-const quick = reactive({ ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS' as 'DAYS' | 'MONTHS', durationValue: 0, fromDate: today, phone: '', currency: 'IQD' as 'IQD' | 'USD', notes: '' })
+const quick = reactive({ ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS' as 'DAYS' | 'MONTHS', durationValue: 0, fromDate: today, phone: '', currency: 'USD' as 'USD', notes: '' })
 
 const userInitial = computed(() => (auth.user?.fullName || auth.user?.username || 'م').trim().slice(0, 1))
 const purchaseRemaining = computed(() => Math.max(Number(quick.totalAmount || 0) - Number(quick.paidAmount || 0), 0))
@@ -144,7 +139,7 @@ function notify(text: string, type: 'ok' | 'error' = 'ok') { message.value = tex
 function calculateDueDate() { const d = quick.fromDate ? new Date(quick.fromDate) : new Date(); const value = Math.max(0, Number(quick.durationValue || 0)); if (quick.durationUnit === 'MONTHS') d.setMonth(d.getMonth() + value); else d.setDate(d.getDate() + value); return d }
 function fileToData(file: File) { return new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file) }) }
 async function onQuickFiles(event: any) { quickImages.value = []; for (const file of Array.from(event.target.files || []) as File[]) quickImages.value.push(await fileToData(file)) }
-function resetQuick() { Object.assign(quick, { ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS', durationValue: 0, fromDate: today, phone: '', currency: 'IQD', notes: '' }); quickImages.value = [] }
+function resetQuick() { Object.assign(quick, { ownerName: '', carName: '', totalAmount: 0, paidAmount: 0, remainingAmount: 0, durationUnit: 'DAYS', durationValue: 0, fromDate: today, phone: '', currency: 'USD', notes: '' }); quickImages.value = [] }
 async function refreshAll() { await refresh() }
 
 async function submitQuick() {
@@ -152,7 +147,7 @@ async function submitQuick() {
   if (totalQuick.value <= 0) return notify(mode.value === 'purchase' ? 'اكتب سعر السيارة الكلي أولاً' : 'اكتب الواصل أو الباقي حتى يتم تنفيذ العملية', 'error')
   saving.value = true
   try {
-    const body = { carName: quick.carName, totalAmount: mode.value === 'purchase' ? Number(quick.totalAmount || 0) : undefined, paidAmount: Number(quick.paidAmount || 0), remainingAmount: mode.value === 'purchase' ? purchaseRemaining.value : Number(quick.remainingAmount || 0), currency: quick.currency, durationUnit: quick.durationUnit, durationValue: Number(quick.durationValue || 0), fromDate: quick.fromDate, documentImages: quickImages.value, notes: quick.notes }
+    const body = { carName: quick.carName, totalAmount: mode.value === 'purchase' ? Number(quick.totalAmount || 0) : undefined, paidAmount: Number(quick.paidAmount || 0), remainingAmount: mode.value === 'purchase' ? purchaseRemaining.value : Number(quick.remainingAmount || 0), currency: 'USD', durationUnit: quick.durationUnit, durationValue: Number(quick.durationValue || 0), fromDate: quick.fromDate, documentImages: quickImages.value, notes: quick.notes }
     if (mode.value === 'sale') { await $fetch('/api/quick/sale', { method: 'POST', body: { ...body, customerName: quick.ownerName, customerPhone: quick.phone } }); notify('تم تنفيذ بيع السيارة وتحديث سجل المبيعات') }
     else { await $fetch('/api/quick/purchase', { method: 'POST', body: { ...body, sellerName: quick.ownerName, sellerPhone: quick.phone, createCar: true } }); notify('تم تنفيذ شراء السيارة وإضافتها للمخزن') }
     resetQuick(); await refresh()

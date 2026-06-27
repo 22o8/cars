@@ -8,6 +8,6 @@ async function main() {
     update: { active: true, role: 'ADMIN', permissions: ['dashboard','cars','customers','sales','installments','invoices','expenses','accounts','reports','employees','settings'] },
     create: { fullName: 'مدير النظام', username: 'admin', password, role: 'ADMIN', active: true, permissions: ['dashboard','cars','customers','sales','installments','invoices','expenses','accounts','reports','employees','settings'] }
   })
-  await prisma.dealerSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, dealerName: 'معرض السيارات', usdToIqdRate: 1310 } })
+  await prisma.dealerSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, dealerName: 'معرض السيارات', usdToIqdRate: 1 } })
 }
 main().finally(() => prisma.$disconnect())

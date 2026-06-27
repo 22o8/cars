@@ -23,14 +23,14 @@ export default defineEventHandler(async(event)=>{
       where:{id},
       data:{ paidAmount: newPaid, status: fullyPaid ? 'PAID' : 'PARTIAL', paidDate: fullyPaid ? new Date() : null }
     })
-    await tx.payment.create({data:{ saleId:inst.saleId, installmentId:id, amount, currency:inst.sale.currency, notes: body.notes || (fullyPaid ? 'تسديد قسط كامل' : 'تسديد قسط جزئي') }})
+    await tx.payment.create({data:{ saleId:inst.saleId, installmentId:id, amount, currency:'USD', notes: body.notes || (fullyPaid ? 'تسديد قسط كامل' : 'تسديد قسط جزئي') }})
     const totalPayments = await tx.payment.aggregate({ where:{ saleId: inst.saleId }, _sum:{ amount:true } })
     const newSalePaid = Number(totalPayments._sum.amount || 0)
     const saleRemaining = Math.max(Number(inst.sale.salePrice) - newSalePaid, 0)
     await tx.sale.update({where:{id:inst.saleId}, data:{ paidAmount:newSalePaid, remainingAmount:saleRemaining }})
-    await tx.cashboxTransaction.create({data:{type:'INCOME', amount, currency:inst.sale.currency, description: fullyPaid ? 'تسديد قسط كامل' : 'تسديد قسط جزئي', referenceId:id}})
+    await tx.cashboxTransaction.create({data:{type:'INCOME', amount, currency:'USD', description: fullyPaid ? 'تسديد قسط كامل' : 'تسديد قسط جزئي', referenceId:id}})
     const invNo=`PAY-${Date.now()}`
-    await tx.invoice.create({data:{ invoiceNumber: invNo, invoiceType:'سند قبض قسط', saleId:inst.saleId, customerName: inst.sale.customer.fullName, customerPhone: inst.sale.customer.phone, title:`تسديد القسط رقم ${inst.installmentNumber} - ${inst.sale.car.brand} ${inst.sale.car.model}`, amount, currency:inst.sale.currency, notes: body.notes || '' }})
+    await tx.invoice.create({data:{ invoiceNumber: invNo, invoiceType:'سند قبض قسط', saleId:inst.saleId, customerName: inst.sale.customer.fullName, customerPhone: inst.sale.customer.phone, title:`تسديد القسط رقم ${inst.installmentNumber} - ${inst.sale.car.brand} ${inst.sale.car.model}`, amount, currency:'USD', notes: body.notes || '' }})
     return {
       paid,
       notificationInfo: {
@@ -39,7 +39,7 @@ export default defineEventHandler(async(event)=>{
         customerName: inst.sale.customer.fullName,
         carName: `${inst.sale.car.brand} ${inst.sale.car.model}`,
         amount,
-        currency: inst.sale.currency,
+        currency: 'USD',
         fullyPaid
       }
     }

@@ -11,7 +11,7 @@ const schema = z.object({
   totalAmount: z.number().min(0).optional().default(0),
   paidAmount: z.number().min(0).default(0),
   remainingAmount: z.number().min(0).optional().default(0),
-  currency: z.enum(['IQD', 'USD']).default('IQD'),
+  currency: z.enum(['IQD', 'USD']).default('USD'),
   durationUnit: z.enum(['DAYS', 'MONTHS']).default('DAYS'),
   durationValue: z.number().min(0).default(0),
   fromDate: z.string().optional().nullable(),
@@ -39,7 +39,7 @@ function calculateDueDate(fromDate: Date, unit: 'DAYS' | 'MONTHS', value: number
 export default defineEventHandler(async (event) => {
   const user = await requirePermission(event, 'purchases')
   await ensurePurchaseTable()
-  const body = schema.parse(await readBody(event))
+  const body = {...schema.parse(await readBody(event)), currency:'USD' as const}
 
   const totalInput = Number(body.totalAmount || 0)
   const paid = Math.min(Number(body.paidAmount || 0), Math.max(totalInput, Number(body.paidAmount || 0)))
@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
         totalAmount: total,
         paidAmount: paid,
         remainingAmount: remaining,
-        currency: body.currency,
+        currency: 'USD',
         durationDays,
         fromDate: from,
         dueDate,
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
     })
 
     if (paid > 0) {
-      await tx.cashboxTransaction.create({ data: { type: 'EXPENSE', amount: paid, currency: body.currency, description: `واصل شراء سيارة: ${body.carName} من ${body.sellerName}`, referenceId: p.id } })
+      await tx.cashboxTransaction.create({ data: { type: 'EXPENSE', amount: paid, currency: 'USD', description: `واصل شراء سيارة: ${body.carName} من ${body.sellerName}`, referenceId: p.id } })
     }
 
     if (body.createCar) {
@@ -86,7 +86,7 @@ export default defineEventHandler(async (event) => {
           year: new Date().getFullYear(),
           purchasePrice: total,
           salePrice: 0,
-          currency: body.currency,
+          currency: 'USD',
           status: 'AVAILABLE',
           imageUrls: docs,
           description: `تمت إضافتها من التنفيذ السريع للشراء. صاحب السيارة: ${body.sellerName}. الباقي: ${remaining}`

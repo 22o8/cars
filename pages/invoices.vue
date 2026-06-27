@@ -11,7 +11,7 @@
       <FormField label="رقم الهاتف" hint="اختياري"><input v-model.trim="form.customerPhone" class="input" placeholder="رقم الهاتف"></FormField>
       <FormField label="العنوان أو السبب" hint="مثال: قبض دفعة سيارة، مصروف صيانة، بيع سيارة"><input v-model.trim="form.title" class="input" placeholder="سبب الفاتورة"></FormField>
       <FormField label="المبلغ" hint="قيمة الفاتورة أو السند"><input v-model.number="form.amount" type="number" class="input" placeholder="0"></FormField>
-      <FormField label="العملة" hint="عملة المبلغ"><select v-model="form.currency" class="input"><option value="IQD">دينار عراقي</option><option value="USD">دولار</option></select></FormField>
+      <FormField label="العملة" hint="النظام يعمل بالدولار فقط"><input value="USD - دولار" readonly class="input bg-slate-500/10"></FormField>
       <FormField label="ملاحظات" hint="اختياري"><input v-model.trim="form.notes" class="input" placeholder="ملاحظات"></FormField>
       <div class="form-field justify-end"><span class="form-label">الإجراء</span><button class="btn-primary btn" :disabled="busy" @click="save">{{busy?'جاري الحفظ':'حفظ الفاتورة'}}</button></div>
     </div></div>
@@ -23,10 +23,10 @@
 </template>
 <script setup lang="ts">
 const { data, refresh } = useLazyFetch<any[]>('/api/invoices', { default: () => [] })
-const form=reactive({invoiceType:'سند قبض', customerName:'', customerPhone:'', title:'', amount:0, currency:'IQD', notes:''})
+const form=reactive({invoiceType:'سند قبض', customerName:'', customerPhone:'', title:'', amount:0, currency:'USD', notes:''})
 const busy=ref(false); const message=ref(''); const messageType=ref<'ok'|'error'>('ok')
 function notify(t:string,type:'ok'|'error'='ok'){message.value=t;messageType.value=type;setTimeout(()=>message.value='',3500)}
-async function save(){ if(!form.customerName||!form.title||!form.amount) return notify('أكمل اسم العميل والعنوان والمبلغ','error'); busy.value=true; try{ await $fetch('/api/invoices',{method:'POST',body:form}); Object.assign(form,{invoiceType:'سند قبض', customerName:'', customerPhone:'', title:'', amount:0, currency:'IQD', notes:''}); await refresh(); notify('تم حفظ الفاتورة') }catch(e:any){notify(e?.data?.message||'تعذر حفظ الفاتورة','error')}finally{busy.value=false} }
+async function save(){ if(!form.customerName||!form.title||!form.amount) return notify('أكمل اسم العميل والعنوان والمبلغ','error'); busy.value=true; try{ await $fetch('/api/invoices',{method:'POST',body:form}); Object.assign(form,{invoiceType:'سند قبض', customerName:'', customerPhone:'', title:'', amount:0, currency:'USD', notes:''}); await refresh(); notify('تم حفظ الفاتورة') }catch(e:any){notify(e?.data?.message||'تعذر حفظ الفاتورة','error')}finally{busy.value=false} }
 function openInvoice(i:any,type:'html'|'word'){ window.open(`/api/invoices/${i.id}/document?type=${type}`,'_blank') }
 function openAllPrint(){ window.open('/api/invoices/print-all','_blank') }
 </script>

@@ -42,12 +42,7 @@
           <input v-model.number="form.firstPayment" type="number" min="0" class="input" placeholder="الدفعة الأولى">
         </FormField>
 
-        <FormField label="العملة" hint="عملة البيع لهذا العقد">
-          <select v-model="form.currency" class="input">
-            <option value="IQD">دينار عراقي</option>
-            <option value="USD">دولار</option>
-          </select>
-        </FormField>
+        <FormField label="العملة" hint="النظام يعمل بالدولار فقط"><input value="USD - دولار" readonly class="input bg-slate-500/10"></FormField>
       </div>
 
       <div v-if="form.saleType === 'TRADE_IN'" class="mt-5 rounded-3xl border border-amber-500/30 bg-amber-500/5 p-4">
@@ -131,7 +126,7 @@ const emptyForm = () => ({
   saleType: 'CASH',
   salePrice: 0,
   firstPayment: 0,
-  currency: 'IQD',
+  currency: 'USD',
   installmentsCount: 1,
   intervalDays: 30,
   firstDueDate: '',
@@ -163,7 +158,7 @@ watch(() => form.carId, () => {
   const car = availableCars.value.find((c: any) => c.id === form.carId)
   if (car) {
     form.salePrice = Number(car.salePrice)
-    form.currency = car.currency
+    form.currency = 'USD'
   }
 })
 

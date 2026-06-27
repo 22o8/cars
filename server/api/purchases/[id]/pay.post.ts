@@ -35,13 +35,13 @@ export default defineEventHandler(async (event) => {
       data: {
         type: 'EXPENSE',
         amount,
-        currency: p.currency,
+        currency: 'USD',
         description: fullyPaid ? `تسديد باقي شراء سيارة: ${p.carName}` : `دفعة على شراء سيارة: ${p.carName}`,
         referenceId: p.id
       }
     })
 
-    return { updated, amount, fullyPaid, sellerName: p.sellerName, carName: p.carName, currency: p.currency }
+    return { updated, amount, fullyPaid, sellerName: p.sellerName, carName: p.carName, currency: 'USD' }
   })
 
   await audit(user.fullName, 'تسديد دفعة شراء', 'Purchase', id, `المبلغ: ${result.amount}`)
@@ -50,7 +50,7 @@ export default defineEventHandler(async (event) => {
     sellerName: result.sellerName,
     carName: result.carName,
     amount: result.amount,
-    currency: result.currency,
+    currency: 'USD',
     fullyPaid: result.fullyPaid
   }).catch((error: any) => ({ ok: false, sent: 0, failed: 1, error: error?.message }))
 

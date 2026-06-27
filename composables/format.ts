@@ -1,19 +1,18 @@
-export function money(value: any, currency = 'IQD') {
+export function money(value: any, currency = 'USD') {
   const n = Number(value || 0)
-  const label = currency === 'USD' ? '$' : 'د.ع'
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n)} ${label}`
+  const text = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(n)
+  return `$ ${text}`
 }
 
-export function compactMoney(value: any, currency = 'IQD') {
+export function compactMoney(value: any, currency = 'USD') {
   const n = Number(value || 0)
   const abs = Math.abs(n)
   const sign = n < 0 ? '-' : ''
-  const label = currency === 'USD' ? '$' : 'د.ع'
   let text = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(abs)
   if (abs >= 1_000_000_000) text = `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(abs / 1_000_000_000)}B`
   else if (abs >= 1_000_000) text = `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(abs / 1_000_000)}M`
   else if (abs >= 1_000) text = `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(abs / 1_000)}K`
-  return `${sign}${text} ${label}`
+  return `$ ${sign}${text}`
 }
 
 export function dateText(value: any) {

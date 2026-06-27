@@ -10,7 +10,7 @@ const schema = z.object({
   carName: z.string().min(1, 'اسم السيارة مطلوب'),
   paidAmount: z.number().min(0).default(0),
   remainingAmount: z.number().min(0).default(0),
-  currency: z.enum(['IQD', 'USD']).default('IQD'),
+  currency: z.enum(['IQD', 'USD']).default('USD'),
   durationUnit: z.enum(['DAYS', 'MONTHS']).default('DAYS'),
   durationValue: z.number().min(0).default(0),
   fromDate: z.string().optional().nullable(),
@@ -36,7 +36,7 @@ function calculateDueDate(fromDate: Date, unit: 'DAYS' | 'MONTHS', value: number
 
 export default defineEventHandler(async (event) => {
   const user = await requirePermission(event, 'sales')
-  const body = schema.parse(await readBody(event))
+  const body = {...schema.parse(await readBody(event)), currency:'USD' as const}
 
   const paid = Number(body.paidAmount || 0)
   const remaining = Number(body.remainingAmount || 0)
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
         where: { id: car.id },
         data: {
           salePrice,
-          currency: body.currency,
+          currency: 'USD',
           status: 'SOLD',
           imageUrls: docs.length ? docs : car.imageUrls,
           description: `${car.description || ''} تم بيعها من التنفيذ السريع. العميل: ${body.customerName}`.trim()
@@ -89,7 +89,7 @@ export default defineEventHandler(async (event) => {
           year: new Date().getFullYear(),
           purchasePrice: 0,
           salePrice,
-          currency: body.currency,
+          currency: 'USD',
           status: 'SOLD',
           imageUrls: docs,
           description: `تمت إضافتها من التنفيذ السريع للبيع. العميل: ${body.customerName}`
@@ -107,15 +107,15 @@ export default defineEventHandler(async (event) => {
         firstPayment: paid,
         paidAmount: paid,
         remainingAmount: remaining,
-        currency: body.currency,
+        currency: 'USD',
         saleDate: from,
         notes: body.notes || null
       }
     })
 
     if (paid > 0) {
-      await tx.payment.create({ data: { saleId: createdSale.id, amount: paid, currency: body.currency, notes: 'الواصل من التنفيذ السريع' } })
-      await tx.cashboxTransaction.create({ data: { type: 'INCOME', amount: paid, currency: body.currency, description: `واصل بيع سيارة: ${body.carName}`, referenceId: createdSale.id } })
+      await tx.payment.create({ data: { saleId: createdSale.id, amount: paid, currency: 'USD', notes: 'الواصل من التنفيذ السريع' } })
+      await tx.cashboxTransaction.create({ data: { type: 'INCOME', amount: paid, currency: 'USD', description: `واصل بيع سيارة: ${body.carName}`, referenceId: createdSale.id } })
     }
 
     if (remaining > 0 && dueDate) {
@@ -140,7 +140,7 @@ export default defineEventHandler(async (event) => {
         customerPhone: customer.phone,
         title: `بيع ${body.carName}`,
         amount: salePrice,
-        currency: body.currency,
+        currency: 'USD',
         notes: `الواصل: ${paid} | الباقي: ${remaining}`
       }
     })

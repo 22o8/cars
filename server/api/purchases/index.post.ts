@@ -13,7 +13,7 @@ const schema = z.object({
   year: z.number().optional().nullable(),
   totalAmount: z.number().min(0).default(0),
   paidAmount: z.number().min(0).default(0),
-  currency: z.enum(['IQD', 'USD']).default('IQD'),
+  currency: z.enum(['IQD', 'USD']).default('USD'),
   durationDays: z.number().min(0).default(0),
   fromDate: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
@@ -24,7 +24,7 @@ const schema = z.object({
 export default defineEventHandler(async (event) => {
   const user = await requirePermission(event, 'purchases')
   await ensurePurchaseTable()
-  const b = schema.parse(await readBody(event))
+  const b = {...schema.parse(await readBody(event)), currency:'USD' as const}
   const paid = Math.min(Number(b.paidAmount || 0), Number(b.totalAmount || 0))
   const remaining = Math.max(Number(b.totalAmount || 0) - paid, 0)
   const from = b.fromDate ? new Date(b.fromDate) : new Date()
@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
         totalAmount: b.totalAmount,
         paidAmount: paid,
         remainingAmount: remaining,
-        currency: b.currency,
+        currency: 'USD',
         durationDays: b.durationDays,
         fromDate: from,
         dueDate: due,
@@ -58,7 +58,7 @@ export default defineEventHandler(async (event) => {
         data: {
           type: 'EXPENSE',
           amount: paid,
-          currency: b.currency,
+          currency: 'USD',
           description: `واصل شراء سيارة: ${b.carName} من ${b.sellerName}`,
           referenceId: p.id
         }
@@ -73,7 +73,7 @@ export default defineEventHandler(async (event) => {
           year: Number(b.year || new Date().getFullYear()),
           purchasePrice: b.totalAmount,
           salePrice: 0,
-          currency: b.currency,
+          currency: 'USD',
           status: 'AVAILABLE',
           imageUrls: b.imageUrls || [],
           description: `تمت إضافتها من عملية شراء. البائع: ${b.sellerName}. الباقي: ${remaining}`

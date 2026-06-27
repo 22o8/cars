@@ -84,7 +84,7 @@ model Car {
   mileage       Int       @default(0)
   purchasePrice Decimal   @default(0)
   salePrice     Decimal   @default(0)
-  currency      Currency  @default(IQD)
+  currency      Currency  @default(USD)
   status        CarStatus @default(AVAILABLE)
   description   String?
   imageUrls     Json?
@@ -103,7 +103,7 @@ model Sale {
   firstPayment    Decimal     @default(0)
   paidAmount      Decimal     @default(0)
   remainingAmount Decimal     @default(0)
-  currency        Currency    @default(IQD)
+  currency        Currency    @default(USD)
   saleDate        DateTime    @default(now())
   notes           String?
   car             Car         @relation(fields: [carId], references: [id])
@@ -132,7 +132,7 @@ model Payment {
   saleId        String
   installmentId String?
   amount        Decimal
-  currency      Currency     @default(IQD)
+  currency      Currency     @default(USD)
   paymentDate   DateTime     @default(now())
   notes         String?
   sale          Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
@@ -150,7 +150,7 @@ model Purchase {
   totalAmount     Decimal  @default(0)
   paidAmount      Decimal  @default(0)
   remainingAmount Decimal  @default(0)
-  currency        Currency @default(IQD)
+  currency        Currency @default(USD)
   durationDays    Int      @default(0)
   fromDate        DateTime @default(now())
   dueDate         DateTime?
@@ -166,7 +166,7 @@ model Expense {
   id          String   @id @default(cuid())
   title       String
   amount      Decimal
-  currency    Currency @default(IQD)
+  currency    Currency @default(USD)
   category    String   @default("عام")
   expenseDate DateTime @default(now())
   notes       String?
@@ -177,7 +177,7 @@ model CashboxTransaction {
   id          String          @id @default(cuid())
   type        TransactionType
   amount      Decimal
-  currency    Currency        @default(IQD)
+  currency    Currency        @default(USD)
   description String
   referenceId String?
   createdAt   DateTime        @default(now())
@@ -192,7 +192,7 @@ model Invoice {
   customerPhone String?
   title         String
   amount        Decimal
-  currency      Currency @default(IQD)
+  currency      Currency @default(USD)
   paymentMethod String   @default("نقدي")
   invoiceDate   DateTime @default(now())
   notes         String?
@@ -205,7 +205,7 @@ model DealerSetting {
   phone        String   @default("")
   address      String   @default("")
   logoUrl      String   @default("")
-  usdToIqdRate Decimal  @default(1310)
+  usdToIqdRate Decimal  @default(1)
   updatedAt    DateTime @updatedAt
 }
 
@@ -249,7 +249,7 @@ model OfferDiscount {
   title     String
   type      String   @default("خصم")
   value     Decimal  @default(0)
-  currency  Currency @default(IQD)
+  currency  Currency @default(USD)
   active    Boolean  @default(true)
   notes     String?
   createdAt DateTime @default(now())

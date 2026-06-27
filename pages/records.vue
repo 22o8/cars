@@ -11,8 +11,8 @@
     <div class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
       <div class="card p-4"><div class="text-xs font-bold text-muted">عدد المبيعات</div><div class="mt-2 text-lg font-black">{{ data?.latestSales?.length || 0 }}</div></div>
       <div class="card p-4"><div class="text-xs font-bold text-muted">عدد المشتريات</div><div class="mt-2 text-lg font-black">{{ data?.latestPurchases?.length || 0 }}</div></div>
-      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي البيع</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.debtIqd || 0, 'IQD') }}</div></div>
-      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي الشراء</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.purchaseDebtIqd || 0, 'IQD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي البيع</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.debtIqd || 0, 'USD') }}</div></div>
+      <div class="card p-4"><div class="text-xs font-bold text-muted">باقي الشراء</div><div class="mt-2 text-lg font-black text-amber-500">{{ money(data?.purchaseDebtIqd || 0, 'USD') }}</div></div>
     </div>
 
     <div class="grid gap-5 xl:grid-cols-2">

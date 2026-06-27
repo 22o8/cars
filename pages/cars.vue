@@ -14,7 +14,7 @@
         <FormField label="لون السيارة" hint="مثال: أبيض، أسود، رصاصي"><input v-model.trim="form.color" class="input" placeholder="لون السيارة"></FormField>
         <FormField label="سعر الشراء" hint="المبلغ الذي دخلت به السيارة إلى المعرض"><input v-model.number="form.purchasePrice" type="number" class="input" placeholder="سعر الشراء"></FormField>
         <FormField label="سعر البيع المطلوب" hint="السعر الذي تريد عرضه للبيع"><input v-model.number="form.salePrice" type="number" class="input" placeholder="سعر البيع"></FormField>
-        <FormField label="عملة السعر" hint="تستخدم في المبيعات والفواتير"><select v-model="form.currency" class="input"><option value="IQD">دينار عراقي</option><option value="USD">دولار</option></select></FormField>
+        <FormField label="العملة" hint="النظام يعمل بالدولار فقط"><input value="USD - دولار" readonly class="input bg-slate-500/10"></FormField>
         <FormField label="حالة السيارة" hint="تتحكم بظهور السيارة في صفحة المبيعات"><select v-model="form.status" class="input"><option value="AVAILABLE">متوفرة للبيع</option><option value="RESERVED">محجوزة</option><option value="SOLD">مباعة</option><option value="MAINTENANCE">صيانة</option><option value="ARCHIVED">مؤرشفة</option></select></FormField>
         <FormField label="رقم اللوحة" hint="اختياري"><input v-model.trim="form.plateNumber" class="input" placeholder="رقم اللوحة"></FormField>
         <FormField label="رقم الشاصي" hint="مهم للتمييز بين السيارات"><input v-model.trim="form.vinNumber" class="input" placeholder="رقم الشاصي"></FormField>
@@ -37,14 +37,14 @@
 <script setup lang="ts">
 const { data: carsData, refresh } = useLazyFetch<any[]>('/api/cars', { default: () => [] })
 const cars = computed(()=>carsData.value || [])
-const empty={brand:'',model:'',year:new Date().getFullYear(),color:'',purchasePrice:0,salePrice:0,currency:'IQD',status:'AVAILABLE',plateNumber:'',vinNumber:'',mileage:0,description:''}
+const empty={brand:'',model:'',year:new Date().getFullYear(),color:'',purchasePrice:0,salePrice:0,currency:'USD',status:'AVAILABLE',plateNumber:'',vinNumber:'',mileage:0,description:''}
 const form=reactive<any>({...empty}); const images=ref<string[]>([]); const editingId=ref(''); const busy=ref(false); const message=ref(''); const messageType=ref<'ok'|'error'>('ok')
 function notify(t:string,type:'ok'|'error'='ok'){ message.value=t; messageType.value=type; setTimeout(()=>message.value='',3500) }
 function fileToData(file:File){return new Promise<string>((resolve,reject)=>{const r=new FileReader(); r.onload=()=>resolve(String(r.result)); r.onerror=reject; r.readAsDataURL(file)})}
 async function onImages(e:any){ images.value=[]; for(const f of Array.from(e.target.files||[]) as File[]) images.value.push(await fileToData(f)) }
 function reset(){ Object.assign(form,{...empty,year:new Date().getFullYear()}); images.value=[]; editingId.value='' }
 async function save(){ if(!form.brand||!form.model) return notify('اكتب شركة السيارة والموديل أولاً','error'); busy.value=true; try{ const body={...form,imageUrls:images.value}; if(editingId.value) await $fetch(`/api/cars/${editingId.value}`,{method:'PATCH',body}); else await $fetch('/api/cars',{method:'POST',body}); const wasEditing=!!editingId.value; reset(); await refresh(); notify(wasEditing?'تم تعديل السيارة':'تمت إضافة السيارة') }catch(e:any){ notify(e?.data?.message||'تعذر حفظ السيارة','error') }finally{busy.value=false} }
-function edit(c:any){ editingId.value=c.id; Object.assign(form,{brand:c.brand,model:c.model,year:c.year,color:c.color||'',purchasePrice:Number(c.purchasePrice||0),salePrice:Number(c.salePrice||0),currency:c.currency,status:c.status,plateNumber:c.plateNumber||'',vinNumber:c.vinNumber||'',mileage:c.mileage||0,description:c.description||''}); images.value=Array.isArray(c.imageUrls)?[...c.imageUrls]:[]; window.scrollTo({top:0,behavior:'smooth'}) }
+function edit(c:any){ editingId.value=c.id; Object.assign(form,{brand:c.brand,model:c.model,year:c.year,color:c.color||'',purchasePrice:Number(c.purchasePrice||0),salePrice:Number(c.salePrice||0),currency:'USD',status:c.status,plateNumber:c.plateNumber||'',vinNumber:c.vinNumber||'',mileage:c.mileage||0,description:c.description||''}); images.value=Array.isArray(c.imageUrls)?[...c.imageUrls]:[]; window.scrollTo({top:0,behavior:'smooth'}) }
 function cancelEdit(){ reset() }
 async function remove(c:any){ if(!confirm('هل تريد حذف السيارة؟')) return; try{ await $fetch(`/api/cars/${c.id}`,{method:'DELETE'}); await refresh(); notify('تم حذف السيارة') }catch(e:any){ notify(e?.data?.message||'تعذر حذف السيارة','error') } }
 function status(s:string){return {AVAILABLE:'متوفرة',RESERVED:'محجوزة',SOLD:'مباعة',MAINTENANCE:'صيانة',ARCHIVED:'مؤرشفة'}[s]||s}
