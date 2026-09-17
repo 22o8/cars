@@ -1,29 +1,16 @@
 {
-  "name": "autodealer-pro-web",
+  "name": "transport-ledger-pwa",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/clean-nuxt.cjs && nuxt dev",
-    "build": "node scripts/clean-nuxt.cjs && nuxt build",
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "prisma generate",
-    "db:push": "prisma db push",
-    "db:seed": "node prisma/seed.js",
-    "notifications:info": "node -e \"console.log('Use OneSignal. Set NUXT_PUBLIC_ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY in Vercel.')\"",
-    "db:setup": "prisma generate && prisma db push"
+    "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@nuxtjs/tailwindcss": "^6.14.0",
-    "@pinia/nuxt": "^0.11.3",
-    "@prisma/client": "6.16.2",
-    "@vite-pwa/nuxt": "^1.0.4",
-    "bcryptjs": "^3.0.3",
-    "jsonwebtoken": "^9.0.2",
-    "nuxt": "3.21.7",
-    "pinia": "^3.0.4",
-    "prisma": "6.16.2",
-    "vue": "^3.5.35",
-    "vue-router": "^4.6.4",
-    "zod": "^4.1.13"
+    "nuxt": "4.5.2"
   }
 }

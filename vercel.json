@@ -1,12 +1,5 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/installment-alerts",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/backup-health",
-      "schedule": "0 0 * * *"
-    }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nuxtjs",
+  "buildCommand": "npm run build"
 }

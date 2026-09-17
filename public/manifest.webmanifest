@@ -1,18 +1,31 @@
 {
-  "name": "نظام إدارة المعرض",
-  "short_name": "إدارة المعرض",
-  "description": "نظام إدارة المعرض للسيارات والأقساط والعملاء",
-  "lang": "ar",
-  "dir": "rtl",
+  "name": "سجل النقل والمصروفات",
+  "short_name": "سجل النقل",
+  "description": "تسجيل بيانات السائق والشحنة والصرفيات والرسوم",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "theme_color": "#07111f",
-  "background_color": "#07111f",
+  "orientation": "any",
+  "lang": "ar",
+  "dir": "rtl",
+  "theme_color": "#12304a",
+  "background_color": "#f3f6f8",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

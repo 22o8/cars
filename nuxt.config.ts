@@ -1,44 +1,22 @@
 export default defineNuxtConfig({
-  compatibilityDate: '2026-06-08',
+  compatibilityDate: '2026-09-17',
   devtools: { enabled: false },
-  modules: ['@nuxtjs/tailwindcss', '@pinia/nuxt'],
-  css: ['~/assets/css/main.css'],
-  experimental: { payloadExtraction: false },
+  css: ['~/assets/main.css'],
   app: {
-    pageTransition: false,
-    layoutTransition: false,
     head: {
-      title: 'نظام إدارة المعرض',
+      htmlAttrs: { lang: 'ar', dir: 'rtl' },
+      title: 'سجل النقل والمصروفات',
       meta: [
-        { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1' },
-        { name: 'theme-color', content: '#07111f' }
+        { name: 'description', content: 'نظام مبسط لتسجيل بيانات النقل والصرفيات والرسوم' },
+        { name: 'theme-color', content: '#12304a' },
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'default' }
       ],
       link: [
-        { rel: 'icon', href: '/favicon.ico' },
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
         { rel: 'apple-touch-icon', href: '/icons/icon-192.png' },
-        { rel: 'manifest', href: '/manifest.webmanifest' },
-        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }
+        { rel: 'manifest', href: '/manifest.webmanifest' }
       ]
-    }
-  },
-  runtimeConfig: {
-    jwtSecret: process.env.JWT_SECRET || 'change-this-secret',
-    public: {
-      appName: 'نظام إدارة المعرض',
-      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
-      oneSignalAppId: process.env.NUXT_PUBLIC_ONESIGNAL_APP_ID || ''
-    }
-  },
-  vite: {
-    optimizeDeps: {
-      include: ['@vue/devtools-core', '@vue/devtools-kit', 'pinia']
-    }
-  },
-  nitro: {
-    compressPublicAssets: true,
-    routeRules: {
-      '/api/**': { headers: { 'cache-control': 'no-store' } },
-      '/icons/**': { headers: { 'cache-control': 'public,max-age=31536000,immutable' } }
     }
   }
 })

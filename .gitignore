@@ -1,10 +1,8 @@
 node_modules
 .nuxt
 .output
+.data
 .env
 .DS_Store
-.env.*
-dist
-coverage
-*.log
-.env.example
+npm-debug.log*
+.sites-runtime
