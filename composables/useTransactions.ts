@@ -103,6 +103,7 @@ export function useTransactions() {
 
   function canComplete(tx: Transaction, key: string) {
     if (key === 'unified' && !tx.unifiedProcedureNo.trim()) return 'أدخل رقم الإجراء الموحد أولاً'
+    if (key === 'asycuda' && !tx.declarationNo.trim()) return 'أدخل رقم البيان أولاً'
     if (key === 'archive' && !tx.attachments.some(a => a.category === 'scan')) return 'ارفع ملف السكنر أولاً'
     return ''
   }

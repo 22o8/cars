@@ -1,4 +1,4 @@
-import type { StageEntry } from '~/types'
+import type { Role, StageEntry } from '~/types'
 
 export const baseStageDefs = [
   ['created', 'إنشاء المعاملة'],
@@ -30,7 +30,7 @@ export function makeStages(vet = false, agri = false): StageEntry[] {
 }
 
 export const stageRoleMap: Record<string, string[]> = {
-  unified: ['admin', 'asycuda'],
+  unified: ['admin'],
   asycuda: ['admin', 'asycuda'],
   inspection: ['admin', 'inspection'],
   customs: ['admin', 'customs'],
@@ -43,4 +43,15 @@ export const stageRoleMap: Record<string, string[]> = {
   transport: ['admin', 'transport'],
   archive: ['admin', 'archive'],
   delivery: ['admin', 'delivery']
+}
+
+export const roleStageMap: Partial<Record<Role, string>> = {
+  inspection: 'inspection',
+  customs: 'customs',
+  audit: 'audit',
+  cashier: 'cashier',
+  completion: 'completion',
+  computer: 'computer',
+  transport: 'transport',
+  delivery: 'delivery'
 }
