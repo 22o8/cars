@@ -6,6 +6,7 @@ export const baseStageDefs = [
   ['asycuda', 'السكودة'],
   ['inspection', 'الكشف والتواقيع'],
   ['customs', 'الأمور الكمركية'],
+  ['checks', 'الفحص والتتبع'],
   ['audit', 'التدقيق'],
   ['cashier', 'الصندوق'],
   ['completion', 'الإنجاز'],
@@ -15,17 +16,17 @@ export const baseStageDefs = [
   ['delivery', 'التسليم']
 ] as const
 
-export const workStageDefs = baseStageDefs.filter(([key]) => !['created'].includes(key))
+export const workStageDefs = baseStageDefs.filter(([key]) => key !== 'created')
 
 export function makeStages(vet = false, agri = false): StageEntry[] {
   const list = baseStageDefs.map(([key, label], idx) => ({
     key, label, status: idx === 0 ? 'done' : idx === 1 ? 'active' : 'pending'
   } as StageEntry))
-  const customsIndex = list.findIndex(s => s.key === 'customs')
+  const checksIndex = list.findIndex(s => s.key === 'checks')
   const extras: StageEntry[] = []
   if (vet) extras.push({ key: 'veterinary', label: 'فحص البيطرة', status: 'pending' })
   if (agri) extras.push({ key: 'agriculture', label: 'فحص الزراعة', status: 'pending' })
-  list.splice(customsIndex + 1, 0, ...extras)
+  list.splice(checksIndex + 1, 0, ...extras)
   return list
 }
 
@@ -34,8 +35,9 @@ export const stageRoleMap: Record<string, string[]> = {
   asycuda: ['admin', 'asycuda'],
   inspection: ['admin', 'inspection'],
   customs: ['admin', 'customs'],
-  veterinary: ['admin', 'inspection'],
-  agriculture: ['admin', 'inspection'],
+  checks: ['admin', 'checks'],
+  veterinary: ['admin', 'checks'],
+  agriculture: ['admin', 'checks'],
   audit: ['admin', 'audit'],
   cashier: ['admin', 'cashier'],
   completion: ['admin', 'completion'],
@@ -48,10 +50,17 @@ export const stageRoleMap: Record<string, string[]> = {
 export const roleStageMap: Partial<Record<Role, string>> = {
   inspection: 'inspection',
   customs: 'customs',
+  checks: 'checks',
   audit: 'audit',
   cashier: 'cashier',
   completion: 'completion',
   computer: 'computer',
   transport: 'transport',
   delivery: 'delivery'
+}
+
+export function stageLabel(key?: string) {
+  if (!key) return 'غير محدد'
+  const all = [...baseStageDefs, ['veterinary', 'فحص البيطرة'], ['agriculture', 'فحص الزراعة']] as readonly (readonly [string,string])[]
+  return all.find(([k]) => k === key)?.[1] || key
 }

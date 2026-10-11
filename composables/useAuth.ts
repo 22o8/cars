@@ -3,7 +3,7 @@ import { roleStageMap } from '~/utils/stages'
 
 const roleLabels: Record<Role, string> = {
   admin: 'مدير النظام', asycuda: 'موظف السكودة', inspection: 'موظف الكشف', customs: 'الأمور الكمركية',
-  audit: 'التدقيق', cashier: 'الصندوق', completion: 'الإنجاز', computer: 'الحاسبة',
+  checks: 'موظف الفحص والتتبع', audit: 'التدقيق', cashier: 'الصندوق', completion: 'الإنجاز', computer: 'الحاسبة',
   transport: 'النقل البري', archive: 'التفريغ والأرشفة', delivery: 'التسليم', viewer: 'مشاهدة فقط'
 }
 
@@ -13,13 +13,14 @@ export function useAuth() {
     { id: 'u2', name: 'موظف السكودة', role: 'asycuda', active: true },
     { id: 'u3', name: 'موظف الكشف', role: 'inspection', active: true },
     { id: 'u4', name: 'موظف الأمور الكمركية', role: 'customs', active: true },
-    { id: 'u5', name: 'موظف التدقيق', role: 'audit', active: true },
-    { id: 'u6', name: 'موظف الصندوق', role: 'cashier', active: true },
-    { id: 'u7', name: 'موظف الإنجاز', role: 'completion', active: true },
-    { id: 'u8', name: 'موظف الحاسبة', role: 'computer', active: true },
-    { id: 'u9', name: 'موظف النقل البري', role: 'transport', active: true },
-    { id: 'u10', name: 'موظف الأرشفة', role: 'archive', active: true },
-    { id: 'u11', name: 'موظف التسليم', role: 'delivery', active: true }
+    { id: 'u5', name: 'موظف الفحص والتتبع', role: 'checks', active: true },
+    { id: 'u6', name: 'موظف التدقيق', role: 'audit', active: true },
+    { id: 'u7', name: 'موظف الصندوق', role: 'cashier', active: true },
+    { id: 'u8', name: 'موظف الإنجاز', role: 'completion', active: true },
+    { id: 'u9', name: 'موظف الحاسبة', role: 'computer', active: true },
+    { id: 'u10', name: 'موظف النقل البري', role: 'transport', active: true },
+    { id: 'u11', name: 'موظف الأرشفة', role: 'archive', active: true },
+    { id: 'u12', name: 'موظف التسليم', role: 'delivery', active: true }
   ])
   const currentUserId = useCookie<string>('tarabil.currentUser', { default: () => 'u1', sameSite: 'lax' })
   const currentUser = computed(() => users.value.find(u => u.id === currentUserId.value) || users.value[0])

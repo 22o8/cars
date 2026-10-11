@@ -1,8 +1,8 @@
 import type { Company, Transaction, Activity, StageStatus, StageEntry } from '~/types'
 import { makeStages, stageRoleMap } from '~/utils/stages'
 
-const STORAGE_KEY = 'tarabil.customs.v2'
-const OLD_STORAGE_KEY = 'tarabil.customs.v1'
+const STORAGE_KEY = 'tarabil.customs.v4'
+const OLD_STORAGE_KEYS = ['tarabil.customs.v2', 'tarabil.customs.v1']
 
 function now() { return new Date().toISOString() }
 function rid(prefix = '') { return prefix + Math.random().toString(36).slice(2, 10) }
@@ -14,17 +14,25 @@ export function useTransactions() {
     { id: 'c2', name: 'شركة عين الفرات للتجارة العامة والنقل العام', code: '' },
     { id: 'c3', name: 'شركة الساعة الذهبية للتجارة العامة المحدودة', code: '74002598' }
   ])
-  const initialized = useState<boolean>('dbInitializedV2', () => false)
+  const initialized = useState<boolean>('dbInitializedV4', () => false)
   const { currentUser } = useAuth()
 
   function normalizeStages(old: any[], vet = false, agri = false): StageEntry[] {
     const fresh = makeStages(vet, agri)
     if (!Array.isArray(old) || !old.length) return fresh
     const byKey = new Map(old.map((s: any) => [s.key, s]))
-    return fresh.map(s => {
+    return fresh.map((s, index) => {
       const prev: any = byKey.get(s.key)
-      return prev ? { ...s, status: prev.status, completedAt: prev.completedAt, completedBy: prev.completedBy, note: prev.note } : s
+      if (prev) return { ...s, status: prev.status, completedAt: prev.completedAt, completedBy: prev.completedBy, note: prev.note }
+      // مرحلة مضافة في إصدار أحدث: إذا المعاملة تجاوزت مكانها سابقاً نعتبرها مكتملة حتى لا ترجع للخلف.
+      const laterKeys = fresh.slice(index + 1).map(x => x.key)
+      const passed = old.some((x: any) => laterKeys.includes(x.key) && ['active','done','blocked'].includes(x.status))
+      return passed ? { ...s, status: 'done', completedAt: rawDateFromOld(old), completedBy: 'ترحيل النظام' } : s
     })
+  }
+
+  function rawDateFromOld(old: any[]) {
+    return old.find((s:any)=>s.completedAt)?.completedAt || now()
   }
 
   function normalizeTransaction(raw: any): Transaction {
@@ -36,7 +44,7 @@ export function useTransactions() {
       unifiedProcedureNo: raw.unifiedProcedureNo || '', declarationNo: raw.declarationNo || '', notes: raw.notes || '',
       needsVeterinary: !!raw.needsVeterinary, needsAgriculture: !!raw.needsAgriculture,
       stages: normalizeStages(raw.stages, !!raw.needsVeterinary, !!raw.needsAgriculture),
-      attachments: Array.isArray(raw.attachments) ? raw.attachments : [], activities: Array.isArray(raw.activities) ? raw.activities : [],
+      attachments: Array.isArray(raw.attachments) ? raw.attachments.map((a:any) => ({ ...a, stageKey: a.stageKey || (a.category === 'scan' ? 'archive' : undefined), category: a.category === 'scan' ? 'archive-scan' : a.category })) : [], activities: Array.isArray(raw.activities) ? raw.activities : [],
       finance: {
         invoiceValue: Number(oldFinance.invoiceValue || oldFinance.customsValueIqd || 0),
         tax: Number(oldFinance.tax || 0),
@@ -54,7 +62,7 @@ export function useTransactions() {
     if (!import.meta.client || initialized.value) return
     initialized.value = true
     try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(OLD_STORAGE_KEY)
+      const raw = localStorage.getItem(STORAGE_KEY) || OLD_STORAGE_KEYS.map(k => localStorage.getItem(k)).find(Boolean)
       if (!raw) return
       const data = JSON.parse(raw)
       transactions.value = (data.transactions || []).map(normalizeTransaction)
@@ -104,7 +112,7 @@ export function useTransactions() {
   function canComplete(tx: Transaction, key: string) {
     if (key === 'unified' && !tx.unifiedProcedureNo.trim()) return 'أدخل رقم الإجراء الموحد أولاً'
     if (key === 'asycuda' && !tx.declarationNo.trim()) return 'أدخل رقم البيان أولاً'
-    if (key === 'archive' && !tx.attachments.some(a => a.category === 'scan')) return 'ارفع ملف السكنر أولاً'
+    if (key === 'archive' && !tx.attachments.some(a => a.category === 'archive-scan')) return 'ارفع سكنر الأرشفة أولاً'
     return ''
   }
 
