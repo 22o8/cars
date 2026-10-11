@@ -1,16 +1,17 @@
 {
-  "name": "transport-ledger-pwa",
-  "version": "1.0.0",
+  "name": "tarabil-customs-flow",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "nuxt build",
     "dev": "nuxt dev",
-    "generate": "nuxt generate",
+    "build": "nuxt build",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "generate": "nuxt generate"
   },
   "dependencies": {
-    "nuxt": "4.5.2"
-  }
+    "nuxt": "^3.15.4",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {}
 }

@@ -1,31 +1,11 @@
 {
-  "name": "سجل النقل والمصروفات",
-  "short_name": "سجل النقل",
-  "description": "تسجيل بيانات السائق والشحنة والصرفيات والرسوم",
+  "name": "نظام تتبع معاملات طريبيل",
+  "short_name": "طريبيل",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
-  "orientation": "any",
+  "background_color": "#f4f7f8",
+  "theme_color": "#0f766e",
   "lang": "ar",
   "dir": "rtl",
-  "theme_color": "#12304a",
-  "background_color": "#f3f6f8",
-  "icons": [
-    {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
-  ]
+  "icons": []
 }
