@@ -18,7 +18,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '2.4.0-cloud-smart-wait'
+VERSION = '2.5.0-cloud-guided-calibration'
 INSTANCE_LOCK_PORT = 47621
 
 # Windows consoles can use legacy encodings. Never let a status message crash a completed job.
@@ -69,7 +69,7 @@ def paste_text(value: str):
 
 def click_point(p, pause=.35):
     if not p or len(p) != 2 or (int(p[0]) == 0 and int(p[1]) == 0):
-        raise RuntimeError('Agent calibration is incomplete. Run calibrate.py.')
+        raise RuntimeError('Screen point is missing from config.json. Run calibrate-agent.bat and complete TEST calibration.')
     pyautogui.click(int(p[0]), int(p[1]))
     time.sleep(pause)
 
@@ -357,7 +357,7 @@ def navigate_to_unified():
     focus_window(main)
     points = asy.get('unified_menu_clicks', [])
     if not points:
-        raise RuntimeError('Unified procedure navigation is not calibrated.')
+        raise RuntimeError('Unified procedure navigation is missing. Run calibrate-agent.bat and complete all navigation steps.')
 
     step_wait = float(asy.get('menu_step_wait_seconds', 1.4))
     log(f'Navigating to unified procedure ({len(points)} calibrated clicks)...')

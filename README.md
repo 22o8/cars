@@ -31,3 +31,6 @@
 - لا تضبط Output Directory يدوياً.
 
 > استخدم الأتمتة فقط على جهاز وحساب ASYCUDA المصرح لك باستخدامهما من جهة العمل.
+
+## v6.5 guided calibration
+If the agent reports missing login/navigation calibration, stop the agent and run `local-agent/calibrate-agent.bat`. Choose option `1` for a safe test-only calibration. The wizard now clicks each recorded navigation point immediately so the next ASYCUDA menu can actually appear. Run `check-calibration.bat` to verify `TEST READY: YES` before pressing the web test button.
