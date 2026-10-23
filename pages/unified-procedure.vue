@@ -29,6 +29,7 @@ const agentOnline = ref(false)
 const lastSeen = ref('')
 const deviceId = ref('')
 const errorMessage = ref('')
+const agentState = ref<'checking'|'online'|'offline'|'pin'|'server'>('checking')
 const successMessage = ref('')
 let timer:any = null
 
@@ -98,13 +99,18 @@ async function refreshJobs(){
 }
 
 async function refreshAgent(){
-  if(!mobilePin.value.trim()) return
+  if(!mobilePin.value.trim()){ agentOnline.value=false; agentState.value='pin'; return }
   try{
-    const res:any = await $fetch('/api/unified/agent-status', { headers:headers() })
+    const res:any = await $fetch('/api/unified/agent-status', { headers:headers(), query:{ t:Date.now() } })
     agentOnline.value = !!res.online
+    agentState.value = res.online ? 'online' : 'offline'
     lastSeen.value = res.lastSeen || ''
     deviceId.value = res.deviceId || ''
-  }catch{ agentOnline.value=false }
+  }catch(e:any){
+    agentOnline.value=false
+    const sc = e?.statusCode || e?.response?.status
+    agentState.value = sc===401 ? 'pin' : 'server'
+  }
 }
 
 async function refreshAll(){ await Promise.all([refreshJobs(), refreshAgent()]) }
@@ -149,8 +155,12 @@ watch([mobilePin, whatsappNumber], savePrefs)
   <div class="page-head unified-head">
     <div><h1>رقم الإجراء الموحد</h1><p>أرسل الطلب من الهاتف، وجهاز الأسيكودا في المكتب ينفذه تلقائياً</p></div>
     <div class="agent-state" :class="agentOnline?'online':'offline'">
-      <span></span>{{agentOnline ? 'جهاز الأسيكودا متصل' : 'جهاز الأسيكودا غير متصل'}}
-      <small v-if="lastSeen">{{fmt(lastSeen)}}</small>
+      <span></span>
+      <template v-if="agentState==='online'">جهاز الأسيكودا متصل</template>
+      <template v-else-if="agentState==='pin'">أدخل رمز دخول الهاتف</template>
+      <template v-else-if="agentState==='server'">تعذر فحص حالة الجهاز</template>
+      <template v-else>جهاز الأسيكودا غير متصل</template>
+      <small v-if="lastSeen">آخر اتصال: {{fmt(lastSeen)}}</small>
     </div>
   </div>
 

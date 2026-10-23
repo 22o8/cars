@@ -35,4 +35,10 @@ echo.
 echo Dependencies installed successfully.
 echo Starting credential setup...
 .venv\Scripts\python.exe setup_credentials.py
+if errorlevel 1 pause & exit /b 1
+echo.
+echo Enabling automatic background startup...
+call install-autostart.bat
+echo.
+echo Installation complete. After calibration, the agent will run automatically after Windows sign-in.
 pause

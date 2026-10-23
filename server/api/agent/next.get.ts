@@ -4,7 +4,7 @@ import { agentSeenKey, jobKey, queueKey, type UnifiedCloudJob } from '../../util
 
 export default defineEventHandler(async (event) => {
   const deviceId = requireAgent(event)
-  await redisCommand(event, ['SET', agentSeenKey(deviceId), new Date().toISOString(), 'EX', 60])
+  await redisCommand(event, ['SET', agentSeenKey(deviceId), new Date().toISOString(), 'EX', 180])
   for (let i = 0; i < 10; i++) {
     const id = await redisCommand(event, ['RPOP', queueKey(deviceId)])
     if (!id) return { ok: true, job: null }

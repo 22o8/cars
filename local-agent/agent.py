@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+import socket
 from pathlib import Path
 
 import keyring
@@ -16,7 +17,8 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '2.0.0-cloud'
+VERSION = '2.1.0-cloud-autostart'
+INSTANCE_LOCK_PORT = 47621
 
 if not CONFIG_PATH.exists():
     raise SystemExit('config.json غير موجود. شغّل setup_credentials.py ثم calibrate.py أولاً.')
@@ -24,6 +26,19 @@ if not CONFIG_PATH.exists():
 CFG = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
 SCREENSHOTS.mkdir(exist_ok=True)
 pyautogui.FAILSAFE = True
+
+
+
+
+def acquire_instance_lock():
+    lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        lock.bind(('127.0.0.1', INSTANCE_LOCK_PORT))
+        lock.listen(1)
+        return lock
+    except OSError:
+        print('Tarabil Agent يعمل بالفعل في الخلفية.')
+        raise SystemExit(23)
 
 
 def secret(name: str) -> str:
@@ -193,6 +208,7 @@ def complete_job(job_id: str, ok: bool, result=None, error=''):
 
 
 def main():
+    _instance_lock = acquire_instance_lock()
     poll = max(2, int(CFG.get('cloud', {}).get('poll_seconds', 3)))
     print(f'Tarabil Cloud Agent {VERSION}')
     print('الجهاز جاهز لاستلام طلبات رقم الإجراء الموحد من الهاتف.')
