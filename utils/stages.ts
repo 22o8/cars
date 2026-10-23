@@ -31,7 +31,7 @@ export function makeStages(vet = false, agri = false): StageEntry[] {
 }
 
 export const stageRoleMap: Record<string, string[]> = {
-  unified: ['admin'],
+  unified: ['admin', 'unified'],
   asycuda: ['admin', 'asycuda'],
   inspection: ['admin', 'inspection'],
   customs: ['admin', 'customs'],
@@ -48,6 +48,7 @@ export const stageRoleMap: Record<string, string[]> = {
 }
 
 export const roleStageMap: Partial<Record<Role, string>> = {
+  unified: 'unified',
   inspection: 'inspection',
   customs: 'customs',
   checks: 'checks',

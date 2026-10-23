@@ -5,6 +5,11 @@ export default defineNuxtRouteMiddleware((to) => {
   const role = currentUser.value.role
   if (role === 'admin') return
 
+  if (role === 'unified') {
+    if (to.path !== '/unified-procedure') return navigateTo('/unified-procedure')
+    return
+  }
+
   if (role === 'asycuda') {
     if (to.path !== '/asycuda') return navigateTo('/asycuda')
     return

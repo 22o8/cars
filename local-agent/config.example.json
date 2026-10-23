@@ -1,0 +1,45 @@
+{
+  "listen_host": "127.0.0.1",
+  "listen_port": 8765,
+  "agent_key": "CHANGE_ME_WITH_SETUP",
+  "asycuda": {
+    "window_title_contains": [
+      "نظام الأسيكودا العالمي",
+      "ASYCUDAWorld",
+      "ASYCUDA"
+    ],
+    "jnlp_path": "AWIQWorld.jnlp",
+    "launcher_path": "",
+    "launch_wait_seconds": 18,
+    "after_login_wait_seconds": 12,
+    "after_submit_wait_seconds": 5,
+    "login_username": [
+      0,
+      0
+    ],
+    "login_password": [
+      0,
+      0
+    ],
+    "login_button": [
+      0,
+      0
+    ],
+    "unified_menu_clicks": [],
+    "company_code_field": [
+      0,
+      0
+    ],
+    "submit_button": [
+      0,
+      0
+    ],
+    "screenshot_region": null,
+    "result_number_field": null
+  },
+  "whatsapp": {
+    "enabled": false,
+    "graph_version": "",
+    "caption": "رقم الإجراء الموحد - {serial} - {companyName}"
+  }
+}

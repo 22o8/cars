@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- JNLP File for نظام الأسيكودا العالمي Application -->
+<jnlp codebase="https://asy.mof.gov.iq/aw/" href="AWIQWorld.jnlp" spec="1.0+">
+  <information>
+       <title>نظام الأسيكودا العالمي</title>
+      <vendor>UNCTAD - الأونكتاد</vendor>
+      <homepage href="http://www.asycuda.org/"/>
+      <description>نظام الأسيكودا العالمي</description>
+    <description kind="short">ASYCUDAWorld deployed client</description>
+    <description kind="tooltip">ASYCUDAWorld desc</description>
+    <icon href="images/igcc_logo.png"/>
+     <icon href="images/igcc_logo.png" kind="splash"/>
+      <shortcut online="true">
+            <desktop/>
+    </shortcut>
+  </information>
+  <update check="always" policy="always"/>
+  <security>
+      <all-permissions/>
+  </security>
+  <resources>
+    <j2se href="http://java.sun.com/products/autodl/j2se" initial-heap-size="127m" max-heap-size="1224m" version="1.8+"/>
+    <property name="java.util.logging.manager" value="so.util.logging.SOLogManager"/>
+    <property name="java.util.logging.config.file" value="./logging.properties"/>
+    <property name="jnlp.packEnabled" value="true"/>
+    <jar href="lib/asyscan.jar" main="false"/>
+    <jar href="lib/sslca.jar" main="false"/>
+    <jar href="lib/ext/socpe.jar" main="false"/>
+    <jar href="lib/ext/socrypto.jar" main="false"/>
+    <jar href="lib/asybridgec.jar" main="false"/>
+    <jar href="lib/asyfci.jar" main="false"/>
+    <jar href="lib/asyaccc.jar" main="false"/>
+    <jar href="lib/server_stub.jar" main="false"/>
+    <jar href="lib/ext/jfreechart-1.0.13.jar" main="false"/>
+    <jar href="lib/asyman.jar" main="false"/>
+    <jar href="lib/asyprd.jar" main="false"/>
+    <jar href="lib/core.jar" main="false"/>
+    <jar href="lib/asyint.jar" main="false"/>
+    <jar href="lib/intrlc.jar" main="false"/>
+    <jar href="lib/asyotpc.jar" main="false"/>
+    <jar href="lib/dgnst.jar" main="false"/>
+    <jar href="lib/asytarc.jar" main="false"/>
+    <jar href="lib/ext/arefextsdbfs.jar" main="false"/>
+    <jar href="lib/companyc.jar" main="false"/>
+    <jar href="lib/asyprdc.jar" main="false"/>
+    <jar href="lib/asytar.jar" main="false"/>
+    <jar href="lib/asystac.jar" main="false"/>
+    <jar href="lib/emsDemoc.jar" main="false"/>
+    <jar href="lib/htec.jar" main="false"/>
+    <jar href="lib/asycfgc.jar" main="false"/>
+    <jar href="lib/dgnstc.jar" main="false"/>
+    <jar href="lib/asyref.jar" main="false"/>
+    <jar href="lib/studiodocs.jar" main="false"/>
+    <jar href="lib/tutorialc.jar" main="false"/>
+    <jar href="lib/ext/jdbc/derby.jar" main="false"/>
+    <jar href="lib/company.jar" main="false"/>
+    <jar href="lib/ext/arefextc.jar" main="false"/>
+    <jar href="lib/skin.jar" main="false"/>
+    <jar href="lib/asymanc.jar" main="false"/>
+    <jar href="lib/ext/jdbc/hsqldb.jar" main="false"/>
+    <jar href="lib/templatec.jar" main="false"/>
+    <jar href="lib/ext/si18n.jar" main="false"/>
+    <jar href="lib/ext/rmisec.jar" main="false"/>
+    <jar href="lib/asyotp.jar" main="false"/>
+    <jar href="lib/ext/arefdbfsspi.jar" main="false"/>
+    <jar href="lib/asytax.jar" main="false"/>
+    <jar href="lib/tutorial.jar" main="false"/>
+    <jar href="lib/asyintc.jar" main="false"/>
+    <jar href="lib/emsc.jar" main="false"/>
+    <jar href="lib/adminc.jar" main="false"/>
+    <jar href="lib/asyfcic.jar" main="false"/>
+    <jar href="lib/asytir.jar" main="false"/>
+    <jar href="lib/adtcommonsc.jar" main="false"/>
+    <jar href="lib/ems.jar" main="false"/>
+    <jar href="lib/ext/dictPassValidator.jar" main="false"/>
+    <jar href="lib/asyacc.jar" main="false"/>
+    <jar href="lib/emsDemo.jar" main="false"/>
+    <jar href="lib/asyfmcc.jar" main="false"/>
+    <jar href="lib/ext/swingx.jar" main="false"/>
+    <jar href="lib/asygatec.jar" main="false"/>
+    <jar href="lib/admin.jar" main="false"/>
+    <jar href="lib/ext/ktlc.jar" main="false"/>
+    <jar href="lib/asytaxc.jar" main="false"/>
+    <jar href="lib/kswing.jar" main="false"/>
+    <jar href="lib/asyvalc.jar" main="false"/>
+    <jar href="lib/asyrefc.jar" main="false"/>
+    <jar href="lib/asysta.jar" main="false"/>
+    <jar href="lib/nattrsc.jar" main="false"/>
+    <jar href="lib/print.jar" main="false"/>
+    <jar href="lib/ext/arefc.jar" main="false"/>
+    <jar href="lib/demo.jar" main="false"/>
+    <jar href="lib/template.jar" main="false"/>
+    <jar href="lib/client.jar" main="true"/>
+    <jar href="lib/ext/aref.jar" main="false"/>
+    <jar href="lib/ext/jcommon-1.0.16.jar" main="false"/>
+    <jar href="lib/ext/arefext.jar" main="false"/>
+    <jar href="lib/hte.jar" main="false"/>
+    <jar href="lib/studiodocsc.jar" main="false"/>
+    <jar href="lib/democ.jar" main="false"/>
+    <jar href="lib/adtcommons.jar" main="false"/>
+    <jar href="lib/ext/sjndi.jar" main="false"/>
+    <jar href="lib/ext/fingerprint.jar" main="false"/>
+    <jar href="lib/asyval.jar" main="false"/>
+    <jar href="lib/asygate.jar" main="false"/>
+    <jar href="lib/emscs.jar" main="false"/>
+    <jar href="lib/asycfg.jar" main="false"/>
+    <jar href="lib/ext/arefextcs.jar" main="false"/>
+    <jar href="lib/asybrk.jar" main="false"/>
+    <jar href="lib/ext/soutil.jar" main="false"/>
+    <jar href="lib/ext/ktl.jar" main="false"/>
+    <jar href="lib/intrl.jar" main="false"/>
+    <jar href="lib/ext/validator.jar" main="false"/>
+    <jar href="lib/tec.jar" main="false"/>
+    <jar href="lib/ext/x509-jndi.jar" main="false"/>
+    <jar href="lib/ext/jfxrt.jar" main="false"/>
+    <jar href="lib/nattrs.jar" main="false"/>
+    <jar href="lib/asybrkc.jar" main="false"/>
+    <jar href="lib/te.jar" main="false"/>
+    <jar href="lib/asybridge.jar" main="false"/>
+	<jar href="lib/asyusrc.jar" main="false"/>
+	<jar href="lib/asyusr.jar" main="false"/>
+    <jar href="lib/asyadminc.jar" main="false"/>
+    <jar href="lib/asyadmin.jar" main="false"/>
+    <jar href="lib/asybarc.jar" main="false"/>
+    <jar href="lib/asybar.jar" main="false"/>
+    <jar href="lib/awreportc.jar" main="false"/>
+    <jar href="lib/awreport.jar" main="false"/>  
+	<jar href="lib/asychq.jar" main="false"/>
+	<jar href="lib/asychqc.jar" main="false"/>
+	<jar href="lib/asynet.jar" main="false"/>
+	<jar href="lib/asynetc.jar" main="false"/>	
+	<jar href="lib/asyreportc.jar" main="false"/>
+	<jar href="lib/asyreport.jar" main="false"/>
+	<jar href="lib/asyfilesc.jar" main="false"/>
+	<jar href="lib/asyfiles.jar" main="false"/>
+	<jar href="lib/asyexo.jar" main="false"/>
+    <jar href="lib/asyexoc.jar" main="false"/>	
+		  	   <jar href="lib/asyarchive.jar" main="false"/>
+	  <jar href="lib/asyarchivec.jar" main="false"/>
+	<jar href="lib/asywscorec.jar" main="false"/>
+    <jar href="lib/asywscore.jar" main="false"/>	
+<jar href="lib/externalMailc.jar" main="false"/>
+    <jar href="lib/asyais.jar" main="false"/>
+    <jar href="lib/asyaim.jar" main="false"/>
+	    <jar href="lib/asyaimc.jar" main="false"/>
+    <jar href="lib/externalMail.jar" main="false"/>
+   <jar href="lib/asyexpress.jar" main="false"/>
+    <jar href="lib/asyexpressc.jar" main="false"/> 
+	    <jar href="lib/asyrisk.jar" main="false"/>
+    <jar href="lib/asyriskc.jar" main="false"/>
+	  <jar href="lib/asypca.jar" main="false"/>
+	  <jar href="lib/asypcac.jar" main="false"/>
+	  <jar href="lib/asyconf.jar" main="false"/>
+	  <jar href="lib/asyconfc.jar" main="false"/>
+	  
+	   <jar href="lib/asymdi.jar" main="false"/>
+	  <jar href="lib/asymdic.jar" main="false"/>
+</resources>
+  <application-desc main-class="so.kernel.client.DesktopMain">
+    <argument>https://asy.mof.gov.iq/aw/help/</argument>
+    <argument>//asy.mof.gov.iq:2006/</argument>
+    <argument>-dout</argument>
+  </application-desc>
+</jnlp>

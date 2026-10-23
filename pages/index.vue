@@ -14,7 +14,7 @@ const stageCounts = computed(() => {
 })
 const recent = computed(() => active.value.slice(0,10))
 function fmt(n:number){return new Intl.NumberFormat('ar-IQ').format(n)}
-function stageLink(key:string){ if(key==='asycuda') return '/asycuda'; if(key==='archive') return '/archive'; return `/transactions?stage=${key}` }
+function stageLink(key:string){ if(key==='unified') return '/unified-procedure'; if(key==='asycuda') return '/asycuda'; if(key==='archive') return '/archive'; return `/transactions?stage=${key}` }
 </script>
 <template>
 <div class="page-head"><div><h1>لوحة المتابعة</h1><p>كل المعاملات الجارية في مكان واحد</p></div><NuxtLink to="/transactions/new" class="btn primary">+ معاملة جديدة</NuxtLink></div>

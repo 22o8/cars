@@ -6,6 +6,7 @@ const { users, currentUserId, currentUser, roleLabels, homePath } = useAuth()
 const adminNav = [
   { to: '/', path: '/', label: 'الرئيسية', icon: '⌂' },
   { to: '/transactions', path: '/transactions', label: 'ساحة العمل', icon: '▤' },
+  { to: '/unified-procedure', path: '/unified-procedure', label: 'رقم الإجراء الموحد', icon: '#' },
   { to: '/asycuda', path: '/asycuda', label: 'السكودة', icon: 'A' },
   { to: '/archive', path: '/archive', label: 'الأرشفة', icon: '▣' },
   { to: '/settings/companies', path: '/settings/companies', label: 'الشركات', icon: '◫' },
@@ -15,6 +16,7 @@ const adminNav = [
 const nav = computed(() => {
   const role = currentUser.value.role
   if (role === 'admin') return adminNav
+  if (role === 'unified') return [{ to: '/unified-procedure', path: '/unified-procedure', label: 'رقم الإجراء الموحد', icon: '#' }]
   if (role === 'asycuda') return [{ to: '/asycuda', path: '/asycuda', label: 'السكودة', icon: 'A' }]
   if (role === 'archive') return [{ to: '/archive', path: '/archive', label: 'الأرشفة', icon: '▣' }]
   const stage = roleStageMap[role]
