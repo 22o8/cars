@@ -14,7 +14,6 @@ export default defineEventHandler(async (event) => {
   job.finishedAt = new Date().toISOString()
   job.unifiedProcedureNo = String(body?.unifiedProcedureNo || '').trim()
   job.whatsappSent = !!body?.whatsappSent
-  job.screenshotCaptured = !!body?.screenshotCaptured
   job.error = body?.ok ? '' : String(body?.error || 'فشل التنفيذ على جهاز الأسيكودا')
   await setJson(event, jobKey(id), job)
   return { ok: true, job }

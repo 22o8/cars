@@ -18,7 +18,6 @@ export default defineEventHandler(async (event) => {
   const job: UnifiedCloudJob = {
     id,
     status: 'pending',
-    mode: 'create',
     deviceId: String(cfg.agentDeviceId || 'asycuda-office-1'),
     companyCode,
     companyName,
