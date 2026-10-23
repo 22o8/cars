@@ -32,4 +32,4 @@ if wa:
     cfg['whatsapp']['graph_version'] = graph_version
 
 CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
-print('\nتم الحفظ. الآن شغّل calibrate.py ثم start-agent.bat.')
+print('\nتم الحفظ. الآن شغّل diagnostics.bat ثم اختبر التنقل الآمن.')

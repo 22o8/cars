@@ -43,7 +43,22 @@
     "login_timeout_seconds": 150,
     "main_ready_grace_seconds": 2.0,
     "menu_step_wait_seconds": 1.4,
-    "unified_ready_wait_seconds": 4.0
+    "unified_ready_wait_seconds": 4.0,
+    "smart_navigation_enabled": true,
+    "smart_navigation_timeout_seconds": 35,
+    "document_list_aliases": [
+      "قائمة الوثائق",
+      "Document List"
+    ],
+    "unified_folder_aliases": [
+      "الإجراء الموحد",
+      "الاجراء الموحد",
+      "Unified Procedure"
+    ],
+    "unified_page_aliases": [
+      "رقم الإجراء الموحد",
+      "Unified Procedure Number"
+    ]
   },
   "whatsapp": {
     "enabled": false,

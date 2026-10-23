@@ -15,7 +15,7 @@ const extraStages = computed(() => {
   const extras = [['veterinary','فحص البيطرة'],['agriculture','فحص الزراعة']] as const
   return extras.filter(([key]) => transactions.value.some(t => t.stages.some(s => s.key===key)))
 })
-const allOptions = computed(() => [...workStageDefs, ...extraStages].filter(([k])=>!['asycuda','archive'].includes(k)))
+const allOptions = computed(() => [...workStageDefs, ...extraStages.value].filter(([k])=>!['asycuda','archive'].includes(k)))
 const stageOptions = computed(() => isAdmin.value ? allOptions.value : allOptions.value.filter(([k])=>k===ownStage.value))
 const ownStageKeys = computed(() => currentUser.value.role==='checks' ? ['checks','veterinary','agriculture'] : [ownStage.value].filter(Boolean))
 

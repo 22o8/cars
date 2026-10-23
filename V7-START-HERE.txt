@@ -1,0 +1,26 @@
+ASYCUDA v7 - SCREEN-AWARE NAVIGATION
+====================================
+
+Goal: The Local Agent no longer assumes which ASYCUDA page is open.
+It reads the Java Swing accessibility tree and navigates by control/page names.
+
+FIRST TIME ONLY
+1) Keep your existing config.json and .venv.
+2) Replace the Local Agent files with v7.
+3) Run: update-agent.bat
+4) Run: enable-smart-mode.bat
+5) CLOSE ALL ASYCUDA / Java Web Start windows.
+6) Open ASYCUDA again.
+7) Run: inspect-asycuda.bat
+8) Run: test-smart-navigation.bat
+
+The safe test NEVER enters a company code and NEVER creates a procedure.
+
+Expected behavior from ANY starting ASYCUDA page:
+- normal declaration open -> navigate to Unified Procedure
+- pre-declaration open -> navigate to Unified Procedure
+- notifications open -> navigate to Unified Procedure
+- Unified Procedure already open -> do nothing, confirm state
+- unknown modal popup -> STOP safely and save screenshot
+
+If Java Access Bridge cannot expose the needed control, the old calibrated mouse path remains available as fallback.

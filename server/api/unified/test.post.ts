@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const id = randomUUID()
   const job: UnifiedCloudJob = {
     id,
-    kind: 'test',
+    kind: 'test_navigation',
     status: 'pending',
     deviceId: String(cfg.agentDeviceId || 'asycuda-office-1'),
     companyCode: '',

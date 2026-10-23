@@ -1,3 +1,4 @@
+import process from 'node:process'
 export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },

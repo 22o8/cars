@@ -3,7 +3,7 @@ import type { Transaction } from '~/types'
 
 type CloudJob = {
   id:string
-  kind?:'execute'|'test'
+  kind?:'execute'|'test'|'test_navigation'
   status:'pending'|'processing'|'done'|'failed'
   companyCode:string
   companyName?:string
@@ -17,6 +17,7 @@ type CloudJob = {
   screenshotTaken?:boolean
   screenshotName?:string
   error?:string
+  statusCode?:string
   attempts:number
 }
 
@@ -32,7 +33,7 @@ const agentOnline = ref(false)
 const lastSeen = ref('')
 const deviceId = ref('')
 const errorMessage = ref('')
-const agentState = ref<'checking'|'online'|'offline'|'pin'|'server'>('checking')
+const agentState = ref<'checking'|'ONLINE'|'OFFLINE'|'AUTH_ERROR'|'SERVER_ERROR'|'AGENT_ERROR'>('checking')
 const successMessage = ref('')
 let timer:any = null
 
@@ -42,15 +43,21 @@ function headers(){ return { 'X-Tarabil-Mobile-Pin': mobilePin.value.trim() } }
 function cleanPhone(v:string){ return v.replace(/\D/g,'') }
 function savePrefs(){
   if(!import.meta.client) return
-  localStorage.setItem('tarabil.mobile.pin', mobilePin.value)
+  sessionStorage.setItem('tarabil.mobile.pin', mobilePin.value)
+  localStorage.removeItem('tarabil.mobile.pin')
   localStorage.setItem('tarabil.mobile.whatsapp', whatsappNumber.value)
 }
 function showError(e:any){
-  errorMessage.value = e?.data?.statusMessage || e?.statusMessage || e?.message || 'تعذر تنفيذ الطلب'
+  errorMessage.value = e?.data?.statusMessage || 'تعذر تنفيذ الطلب؛ تحقق من رمز الدخول والاتصال'
   setTimeout(()=>errorMessage.value='', 4500)
 }
 function statusLabel(s:CloudJob['status']){
   return { pending:'بانتظار الجهاز', processing:'جاري التنفيذ على الأسيكودا', done:'مكتمل', failed:'فشل' }[s]
+}
+function jobError(job:CloudJob){
+  if(job.statusCode === 'unknown_popup') return 'ظهرت نافذة غير معروفة داخل ASYCUDA'
+  if(job.statusCode === 'manual_intervention_required') return 'تحتاج العملية إلى تدخل يدوي على جهاز المكتب'
+  return 'تعذر الوصول إلى شاشة رقم الإجراء الموحد؛ راجع تشخيص الجهاز'
 }
 function statusClass(s:CloudJob['status']){ return `cloud-${s}` }
 function fmt(iso?:string){ if(!iso) return ''; try { return new Date(iso).toLocaleString('ar-IQ') } catch { return iso } }
@@ -60,7 +67,7 @@ async function submitCloud(payload?:Partial<CloudJob>){
   const code = String(payload?.companyCode || companyCode.value).trim()
   const phone = cleanPhone(String(payload?.whatsappNumber || whatsappNumber.value))
   if(!code) return showError(new Error('أدخل رمز الشركة'))
-  if(!phone) return showError(new Error('أدخل رقم واتساب مع رمز الدولة'))
+
   sending.value = true
   errorMessage.value = ''
   try{
@@ -116,17 +123,17 @@ async function refreshJobs(){
 }
 
 async function refreshAgent(){
-  if(!mobilePin.value.trim()){ agentOnline.value=false; agentState.value='pin'; return }
+  if(!mobilePin.value.trim()){ agentOnline.value=false; agentState.value='AUTH_ERROR'; return }
   try{
     const res:any = await $fetch('/api/unified/agent-status', { headers:headers(), query:{ t:Date.now() } })
     agentOnline.value = !!res.online
-    agentState.value = res.online ? 'online' : 'offline'
+    agentState.value = res.state || (res.online ? 'ONLINE' : 'OFFLINE')
     lastSeen.value = res.lastSeen || ''
     deviceId.value = res.deviceId || ''
   }catch(e:any){
     agentOnline.value=false
     const sc = e?.statusCode || e?.response?.status
-    agentState.value = sc===401 ? 'pin' : 'server'
+    agentState.value = sc===401 ? 'AUTH_ERROR' : 'SERVER_ERROR'
   }
 }
 
@@ -159,7 +166,8 @@ function chooseCompany(id:string){
 }
 
 onMounted(async()=>{
-  mobilePin.value = localStorage.getItem('tarabil.mobile.pin') || ''
+  mobilePin.value = sessionStorage.getItem('tarabil.mobile.pin') || ''
+  localStorage.removeItem('tarabil.mobile.pin')
   whatsappNumber.value = localStorage.getItem('tarabil.mobile.whatsapp') || ''
   await refreshAll()
   timer = setInterval(refreshAll, 3500)
@@ -173,9 +181,11 @@ watch([mobilePin, whatsappNumber], savePrefs)
     <div><h1>رقم الإجراء الموحد</h1><p>أرسل الطلب من الهاتف، وجهاز الأسيكودا في المكتب ينفذه تلقائياً</p></div>
     <div class="agent-state" :class="agentOnline?'online':'offline'">
       <span></span>
-      <template v-if="agentState==='online'">جهاز الأسيكودا متصل</template>
-      <template v-else-if="agentState==='pin'">أدخل رمز دخول الهاتف</template>
-      <template v-else-if="agentState==='server'">تعذر فحص حالة الجهاز</template>
+      <template v-if="agentState==='ONLINE'">جهاز الأسيكودا متصل</template>
+      <template v-else-if="agentState==='AUTH_ERROR'">رمز دخول الهاتف مطلوب أو غير صحيح</template>
+      <template v-else-if="agentState==='SERVER_ERROR'">تعذر فحص حالة الجهاز</template>
+      <template v-else-if="agentState==='AGENT_ERROR'">خطأ في برنامج الجهاز</template>
+      <template v-else-if="agentState==='checking'">جاري فحص الاتصال</template>
       <template v-else>جهاز الأسيكودا غير متصل</template>
       <small v-if="lastSeen">آخر اتصال: {{fmt(lastSeen)}}</small>
     </div>
@@ -184,19 +194,21 @@ watch([mobilePin, whatsappNumber], savePrefs)
   <div v-if="errorMessage" class="notice danger">{{errorMessage}}</div>
   <div v-if="successMessage" class="notice success">{{successMessage}}</div>
 
+  <section class="card">
+    <div class="field"><label>PIN — رمز دخول الهاتف</label><input v-model="mobilePin" class="input" type="password" inputmode="numeric" autocomplete="off"></div>
+    <h3>اختبار التنقل الآمن</h3>
+    <p>يفتح شاشة رقم الإجراء الموحد ويلتقط صورة فقط، دون رمز شركة أو واتساب ودون إنشاء إجراء.</p>
+    <button class="btn primary" :disabled="sending" @click="submitTest">للتجربة</button>
+  </section>
   <section class="card mobile-unified-card">
-    <div class="section-title">
-      <div><h3 style="margin:0">إرسال سريع من الهاتف</h3><small class="muted">كل ما تحتاجه: رمز الشركة ورقم واتساب</small></div>
-      <button class="btn ghost" :disabled="sending" @click="submitTest">للتجربة</button>
-    </div>
-
+    <h3>التنفيذ الحقيقي</h3>
+    <p>غير مفعّل لحين اكتمال اختبار التنقل والموافقة على إنشاء إجراء حقيقي.</p>
     <div class="mobile-form-grid">
-      <div class="field pin-field"><label>رمز دخول الهاتف</label><input v-model="mobilePin" class="input" type="password" inputmode="numeric" placeholder="••••••"></div>
       <div class="field"><label>شركة محفوظة — اختياري</label><select class="input" @change="chooseCompany(($event.target as HTMLSelectElement).value)"><option value="">اختر الشركة</option><option v-for="c in companies" :key="c.id" :value="c.id">{{c.name}}</option></select></div>
       <div class="field"><label>رمز الشركة</label><input v-model="companyCode" class="input" inputmode="numeric" placeholder="7400XXXX"></div>
       <div class="field"><label>رقم واتساب</label><input v-model="whatsappNumber" class="input" inputmode="tel" placeholder="9647XXXXXXXXX"></div>
       <div class="field optional-company"><label>اسم الشركة — اختياري</label><input v-model="companyName" class="input" placeholder="يظهر في رسالة واتساب"></div>
-      <button class="btn primary big-mobile-action" :disabled="sending" @click="submitCloud()">{{sending?'جاري الإرسال...':'إرسال إلى جهاز الأسيكودا'}}</button>
+      <button class="btn primary big-mobile-action" :disabled="true" @click="submitCloud()">{{sending?'جاري الإرسال...':'إرسال إلى جهاز الأسيكودا'}}</button>
     </div>
   </section>
 
@@ -205,7 +217,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
     <div class="quick-tx-list">
       <article v-for="t in localQueue" :key="t.id" class="quick-tx-row">
         <div><b>{{t.serial}}</b><strong>{{t.companyName}}</strong><small>{{t.companyCode || 'رمز الشركة غير مضاف'}} — {{t.vehicleNumber}}</small></div>
-        <button class="btn primary" :disabled="!t.companyCode || sending" @click="submitTransaction(t)">إرسال للجهاز</button>
+        <button class="btn primary" :disabled="true" @click="submitTransaction(t)">إرسال للجهاز</button>
       </article>
     </div>
   </section>
@@ -221,7 +233,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
     <div v-else class="cloud-job-list">
       <article v-for="job in jobs" :key="job.id" class="cloud-job-row">
         <div class="cloud-job-main">
-          <template v-if="job.kind==='test'">
+          <template v-if="(job.kind==='test' || job.kind==='test_navigation')">
             <b>اختبار الاتصال بالأسيكودا</b>
             <small>يفتح الأسيكودا ويصل إلى صفحة رقم الإجراء الموحد ويلتقط Screenshot فقط.</small>
           </template>
@@ -233,7 +245,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
         </div>
         <div class="cloud-job-state" :class="statusClass(job.status)">{{statusLabel(job.status)}}</div>
         <div class="cloud-job-result">
-          <template v-if="job.status==='done' && job.kind==='test'">
+          <template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')">
             <small>نتيجة الاختبار</small><b>نجح الاختبار — لم يتم إنشاء أي إجراء موحد</b>
             <span v-if="job.screenshotTaken">تم أخذ Screenshot على جهاز الأسيكودا<span v-if="job.screenshotName">: {{job.screenshotName}}</span></span>
           </template>
@@ -242,11 +254,11 @@ watch([mobilePin, whatsappNumber], savePrefs)
             <span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم التنفيذ بدون إرسال واتساب'}}</span>
           </template>
           <template v-else-if="job.status==='failed'">
-            <small>سبب الفشل</small><b class="danger-text">{{job.error || 'فشل التنفيذ'}}</b>
+            <small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b>
           </template>
           <template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template>
         </div>
-        <button v-if="job.status==='failed'" class="btn ghost" @click="retry(job)">إعادة المحاولة</button>
+        <button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button>
       </article>
     </div>
   </section>

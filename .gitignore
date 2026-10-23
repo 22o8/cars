@@ -1,0 +1,13 @@
+node_modules/
+.nuxt/
+.output/
+.vercel/
+.env*
+!.env.example
+local-agent/config.json
+local-agent/.venv*/
+local-agent/logs/
+local-agent/screenshots/
+local-agent/backups/
+local-agent/pending-result*
+**/__pycache__/

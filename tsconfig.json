@@ -1,0 +1,4 @@
+{
+  "extends": "./.nuxt/tsconfig.json",
+  "exclude": ["tests/**", "node_modules/**", ".output/**", "local-agent/**"]
+}

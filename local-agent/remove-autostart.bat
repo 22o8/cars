@@ -1,4 +1,3 @@
 @echo off
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "TarabilAsycudaAgent" /f >nul 2>&1
-echo Tarabil Agent automatic startup removed.
+powershell.exe -NoProfile -File "%~dp0remove-autostart.ps1"
 pause

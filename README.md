@@ -1,36 +1,24 @@
-# نظام متابعة معاملات طريبيل — v6 Cloud Agent
+# نظام متابعة معاملات طريبيل
 
-نسخة Nuxt 3 / PWA مع تنفيذ رقم الإجراء الموحد من الهاتف عبر جهاز ASYCUDA الموجود في المكتب.
+تعديل قسم رقم الإجراء الموحد مبني على المشروع الحالي، وليس إعادة بناء.
 
-## الجديد في v6
-- صفحة موبايل مبسطة لإرسال: رمز الشركة + رقم واتساب.
-- Cloud Queue؛ لا يحتاج الهاتف الوصول المباشر إلى جهاز المكتب.
-- جهاز ASYCUDA يسحب الطلب تلقائياً كل عدة ثوانٍ وينفذه.
-- إذا الجهاز مطفأ يبقى الطلب Pending حتى يعود الجهاز للعمل.
-- حالة الجهاز ظاهرة في الهاتف: متصل / غير متصل.
-- حالات الطلب: بانتظار الجهاز / جاري التنفيذ / مكتمل / فشل.
-- إعادة محاولة الطلبات الفاشلة من الهاتف.
-- استرجاع رقم الإجراء تلقائياً عند إمكانية نسخه من واجهة ASYCUDA.
-- إرسال Screenshot عبر WhatsApp Cloud API عند تفعيل التكامل.
-- لا توجد منافذ Inbound مفتوحة على جهاز المكتب.
+## الحالة الحالية
+نسخة مرشحة للاختبار الآمن؛ لم تُعتمد كنسخة Production-ready. الإنشاء الحقيقي معطل عمداً في الواجهة وAPI والـAgent إلى حين الموافقة الصريحة واستكمال التحقق الحي.
 
-## متغيرات Vercel المطلوبة
-- `UPSTASH_REDIS_REST_URL`
-- `UPSTASH_REDIS_REST_TOKEN`
-- `TARABIL_AGENT_DEVICE_ID=asycuda-office-1`
-- `TARABIL_AGENT_DEVICE_TOKEN`
-- `TARABIL_MOBILE_PIN`
+## التشغيل والفحص
+- `npm ci`
+- `npm test`: اختبارات عقد API مع Redis وهمي، دون ASYCUDA.
+- `npm run typecheck`
+- `npm run build`
 
-## إعداد جهاز ASYCUDA
-راجع `local-agent/README.md`.
+Vercel يستخدم نفس متغيرات البيئة الموجودة: UPSTASH_REDIS_REST_URL وUPSTASH_REDIS_REST_TOKEN وTARABIL_AGENT_DEVICE_ID وTARABIL_AGENT_DEVICE_TOKEN وTARABIL_MOBILE_PIN. لا تضع القيم في المصدر.
 
-## Vercel
-- Framework: Nuxt.js
-- Install: `npm install`
-- Build: `npm run build`
-- لا تضبط Output Directory يدوياً.
+زر «للتجربة» يستخدم مسار `/api/unified/test` مستقل وينشئ `test_navigation` بدون رمز شركة أو واتساب. PIN مطلوب للمصادقة فقط. حالة الجهاز تُقرأ بدون cache. تفاصيل الأخطاء الفنية تبقى محلية لأن أدوار المدير في المشروع الحالي ليست مصادقة خادمية موثوقة.
 
-> استخدم الأتمتة فقط على جهاز وحساب ASYCUDA المصرح لك باستخدامهما من جهة العمل.
+## الـAgent
+راجع `local-agent/README.md` لتصميم JAB 32-bit، اختبارات الأمان، التشخيص، التشغيل التلقائي، النسخ الاحتياطية وحدود التحقق الحالي.
 
-## v6.5 guided calibration
-If the agent reports missing login/navigation calibration, stop the agent and run `local-agent/calibrate-agent.bat`. Choose option `1` for a safe test-only calibration. The wizard now clicks each recorded navigation point immediately so the next ASYCUDA menu can actually appear. Run `check-calibration.bat` to verify `TEST READY: YES` before pressing the web test button.
+## حدود التحقق
+نجحت اختبارات الكود والبناء المحلي. لم يتم نشر هذه التعديلات على Vercel، ولم ينجح اختبار الهاتف إلى ASYCUDA. قيود جلسة التنفيذ منعت قراءة Credential Manager وتسجيل Task Scheduler، وتعذر اتصال JAB الحي. لا تعتبر HTTP 200 لصفحة SPA دليلاً على وجود endpoint جديد.
+
+قبل الاعتماد: شغّل التشخيص من حساب Windows الفعلي، ثبّت مهمة التشغيل، التقط شجرة JAB الحقيقية للتحقق من محددات الشاشة، انشر النسخة المتوافقة، ثم اختبر التنقل من الهاتف من الحالات المختلفة دون إنشاء إجراء.

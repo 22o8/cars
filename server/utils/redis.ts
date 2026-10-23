@@ -11,14 +11,14 @@ export async function redisCommand(event: H3Event, command: (string | number)[])
       Authorization: `Bearer ${cfg.redisToken}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(command)
+    body: JSON.stringify(command),
+    signal: AbortSignal.timeout(15000)
   })
   if (!r.ok) {
-    const detail = await r.text().catch(() => '')
-    throw createError({ statusCode: 502, statusMessage: `Redis request failed: ${detail || r.status}` })
+    throw createError({ statusCode: 502, statusMessage: 'تعذر الاتصال بخدمة قائمة الانتظار' })
   }
   const payload = await r.json() as { result?: any; error?: string }
-  if (payload.error) throw createError({ statusCode: 502, statusMessage: payload.error })
+  if (payload.error) throw createError({ statusCode: 502, statusMessage: 'تعذر تنفيذ طلب قائمة الانتظار' })
   return payload.result
 }
 
