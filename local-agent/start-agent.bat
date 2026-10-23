@@ -1,4 +1,9 @@
 @echo off
 cd /d %~dp0
-python agent.py
+if not exist .venv\Scripts\python.exe (
+    echo Agent environment not found. Run install-agent.bat first.
+    pause
+    exit /b 1
+)
+.venv\Scripts\python.exe agent.py
 pause
