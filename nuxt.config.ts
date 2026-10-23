@@ -14,6 +14,13 @@ export default defineNuxtConfig({
       ]
     }
   },
+  runtimeConfig: {
+    redisUrl: process.env.UPSTASH_REDIS_REST_URL || '',
+    redisToken: process.env.UPSTASH_REDIS_REST_TOKEN || '',
+    agentDeviceId: process.env.TARABIL_AGENT_DEVICE_ID || 'asycuda-office-1',
+    agentDeviceToken: process.env.TARABIL_AGENT_DEVICE_TOKEN || '',
+    mobilePin: process.env.TARABIL_MOBILE_PIN || ''
+  },
   css: ['~/assets/css/main.css'],
   compatibilityDate: '2024-11-01'
 })

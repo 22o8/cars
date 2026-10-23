@@ -1,4 +1,4 @@
-import json, secrets, getpass
+import json, getpass
 from pathlib import Path
 import keyring
 
@@ -6,13 +6,16 @@ BASE = Path(__file__).resolve().parent
 SERVICE = 'TarabilCustomsAgent'
 CONFIG = BASE / 'config.json'
 EXAMPLE = BASE / 'config.example.json'
+cfg = json.loads((CONFIG if CONFIG.exists() else EXAMPLE).read_text(encoding='utf-8'))
 
-if CONFIG.exists():
-    cfg = json.loads(CONFIG.read_text(encoding='utf-8'))
-else:
-    cfg = json.loads(EXAMPLE.read_text(encoding='utf-8'))
+print('إعداد جهاز ASYCUDA — طريبيل')
+server = input(f'رابط النظام على Vercel [{cfg.get("cloud",{}).get("server_url","")}]: ').strip()
+if server: cfg['cloud']['server_url'] = server.rstrip('/')
+device_id = input(f'اسم الجهاز [{cfg.get("cloud",{}).get("device_id","asycuda-office-1")}]: ').strip()
+if device_id: cfg['cloud']['device_id'] = device_id
+device_token = getpass.getpass('TARABIL_AGENT_DEVICE_TOKEN (نفس القيمة الموجودة في Vercel): ').strip()
+if device_token: keyring.set_password(SERVICE, 'agent_device_token', device_token)
 
-print('إعداد برنامج تحكم طريبيل المحلي')
 username = input('اسم مستخدم ASYCUDA: ').strip()
 password = getpass.getpass('كلمة مرور ASYCUDA: ')
 keyring.set_password(SERVICE, 'asycuda_username', username)
@@ -28,9 +31,5 @@ if wa:
     cfg['whatsapp']['enabled'] = True
     cfg['whatsapp']['graph_version'] = graph_version
 
-cfg['agent_key'] = secrets.token_urlsafe(32)
 CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
-print('\nتم حفظ بيانات الدخول داخل Windows Credential Manager.')
-print('مفتاح الربط المحلي — انسخه إلى صفحة رقم الإجراء الموحد في النظام:')
-print(cfg['agent_key'])
-print('\nالخطوة التالية: شغّل calibrate.py لضبط مواقع الأزرار على شاشتك.')
+print('\nتم الحفظ. الآن شغّل calibrate.py ثم start-agent.bat.')

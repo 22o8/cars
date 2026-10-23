@@ -1,12 +1,9 @@
 from __future__ import annotations
-import base64
 import io
 import json
 import os
 import subprocess
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import keyring
@@ -19,8 +16,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '1.0.0'
-JOB_LOCK = threading.Lock()
+VERSION = '2.0.0-cloud'
 
 if not CONFIG_PATH.exists():
     raise SystemExit('config.json غير موجود. شغّل setup_credentials.py ثم calibrate.py أولاً.')
@@ -50,9 +46,7 @@ def click_point(p, pause=.35):
 def find_asycuda_window():
     titles = CFG['asycuda'].get('window_title_contains', [])
     for title in gw.getAllTitles():
-        if not title:
-            continue
-        if any(x.lower() in title.lower() for x in titles):
+        if title and any(x.lower() in title.lower() for x in titles):
             wins = gw.getWindowsWithTitle(title)
             if wins:
                 return wins[0]
@@ -64,12 +58,12 @@ def launch_asycuda():
     win = find_asycuda_window()
     if win:
         try:
-            if win.isMinimized: win.restore()
+            if win.isMinimized:
+                win.restore()
             win.activate()
         except Exception:
             pass
         return False
-
     jnlp = asy.get('jnlp_path', '')
     if jnlp and not os.path.isabs(jnlp):
         jnlp = str((BASE / jnlp).resolve())
@@ -79,7 +73,7 @@ def launch_asycuda():
     if launcher:
         subprocess.Popen([launcher, jnlp], close_fds=True)
     else:
-        os.startfile(jnlp)  # Windows only
+        os.startfile(jnlp)
     time.sleep(float(asy.get('launch_wait_seconds', 18)))
     return True
 
@@ -116,11 +110,11 @@ def read_result_number():
         return ''
     try:
         click_point(p)
-        pyautogui.hotkey('ctrl','a')
-        pyautogui.hotkey('ctrl','c')
+        pyautogui.hotkey('ctrl','a'); pyautogui.hotkey('ctrl','c')
         time.sleep(.2)
         value = (pyperclip.paste() or '').strip()
-        return value if len(value) <= 80 else ''
+        digits = ''.join(ch for ch in value if ch.isdigit())
+        return digits if 6 <= len(digits) <= 30 else value[:80]
     except Exception:
         return ''
 
@@ -128,15 +122,13 @@ def read_result_number():
 def take_screenshot(serial: str):
     region = CFG['asycuda'].get('screenshot_region')
     img = pyautogui.screenshot(region=tuple(region) if region else None)
-    safe = ''.join(c for c in serial if c.isalnum() or c in '-_') or 'transaction'
+    safe = ''.join(c for c in serial if c.isalnum() or c in '-_') or 'unified'
     path = SCREENSHOTS / f'{time.strftime("%Y%m%d-%H%M%S")}-{safe}.png'
     img.save(path)
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
-    return path, base64.b64encode(buf.getvalue()).decode('ascii')
+    return path
 
 
-def send_whatsapp(path: Path, to: str, serial: str, company_name: str) -> bool:
+def send_whatsapp(path: Path, to: str, serial: str, company_name: str, result_no: str) -> bool:
     wa = CFG.get('whatsapp', {})
     if not wa.get('enabled'):
         return False
@@ -153,7 +145,8 @@ def send_whatsapp(path: Path, to: str, serial: str, company_name: str) -> bool:
         up = requests.post(f'{base}/media', headers={'Authorization': f'Bearer {token}'}, data={'messaging_product':'whatsapp'}, files={'file':('unified.png', f, 'image/png')}, timeout=30)
     up.raise_for_status()
     media_id = up.json()['id']
-    caption = (wa.get('caption') or 'رقم الإجراء الموحد - {serial} - {companyName}').format(serial=serial, companyName=company_name)
+    caption_tpl = wa.get('caption') or 'رقم الإجراء الموحد: {procedureNo} - {serial} - {companyName}'
+    caption = caption_tpl.format(procedureNo=result_no or 'راجع الصورة', serial=serial, companyName=company_name)
     msg = requests.post(f'{base}/messages', headers={'Authorization': f'Bearer {token}', 'Content-Type':'application/json'}, json={
         'messaging_product':'whatsapp','to':to,'type':'image','image':{'id':media_id,'caption':caption}
     }, timeout=30)
@@ -161,66 +154,72 @@ def send_whatsapp(path: Path, to: str, serial: str, company_name: str) -> bool:
     return True
 
 
-def run_job(payload):
-    code = str(payload.get('companyCode', '')).strip()
+def run_job(job: dict):
+    code = str(job.get('companyCode', '')).strip()
     if not code:
         raise RuntimeError('رمز الشركة فارغ.')
-    serial = str(payload.get('serial', '')).strip()
-    company = str(payload.get('companyName', '')).strip()
-    phone = str(payload.get('whatsappNumber', '')).strip()
+    serial = str(job.get('serial', '')).strip()
+    company = str(job.get('companyName', '')).strip()
+    phone = str(job.get('whatsappNumber', '')).strip()
     create_unified(code)
     result_number = read_result_number()
-    path, b64 = take_screenshot(serial)
-    sent = send_whatsapp(path, phone, serial, company) if phone else False
-    return {'ok': True, 'unifiedProcedureNo': result_number, 'screenshotBase64': b64, 'screenshotPath': str(path), 'whatsappSent': sent}
+    path = take_screenshot(serial or code)
+    sent = send_whatsapp(path, phone, serial, company, result_number) if phone else False
+    return {'unifiedProcedureNo': result_number, 'whatsappSent': sent, 'screenshotPath': str(path)}
 
 
-class Handler(BaseHTTPRequestHandler):
-    def _headers(self, status=200):
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Tarabil-Agent-Key')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Private-Network', 'true')
-        self.end_headers()
+def cloud_headers():
+    token = secret('agent_device_token')
+    cloud = CFG.get('cloud', {})
+    device_id = cloud.get('device_id', '')
+    if not token or not device_id:
+        raise RuntimeError('بيانات ربط الجهاز بالسيرفر غير مكتملة. شغّل setup_credentials.py.')
+    return {'Authorization': f'Bearer {token}', 'X-Tarabil-Device-Id': device_id}
 
-    def _json(self, status, data):
-        self._headers(status)
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
 
-    def _authorized(self):
-        return self.headers.get('X-Tarabil-Agent-Key', '') == CFG.get('agent_key', '')
+def api_url(path: str):
+    base = str(CFG.get('cloud', {}).get('server_url', '')).rstrip('/')
+    if not base.startswith('http'):
+        raise RuntimeError('server_url غير مضبوط في config.json.')
+    return base + path
 
-    def do_OPTIONS(self):
-        self._headers(204)
 
-    def do_GET(self):
-        if self.path != '/health': return self._json(404, {'ok':False})
-        if not self._authorized(): return self._json(401, {'ok':False,'error':'unauthorized'})
-        self._json(200, {'ok':True,'version':VERSION,'busy':JOB_LOCK.locked()})
+def complete_job(job_id: str, ok: bool, result=None, error=''):
+    payload = {'id': job_id, 'ok': ok, 'error': error}
+    if result:
+        payload.update({'unifiedProcedureNo': result.get('unifiedProcedureNo',''), 'whatsappSent': bool(result.get('whatsappSent'))})
+    r = requests.post(api_url('/api/agent/complete'), headers=cloud_headers(), json=payload, timeout=25)
+    r.raise_for_status()
 
-    def do_POST(self):
-        if self.path != '/run-unified': return self._json(404, {'ok':False})
-        if not self._authorized(): return self._json(401, {'ok':False,'error':'unauthorized'})
-        if not JOB_LOCK.acquire(blocking=False): return self._json(409, {'ok':False,'error':'يوجد إجراء آخر قيد التنفيذ على هذا الجهاز'})
+
+def main():
+    poll = max(2, int(CFG.get('cloud', {}).get('poll_seconds', 3)))
+    print(f'Tarabil Cloud Agent {VERSION}')
+    print('الجهاز جاهز لاستلام طلبات رقم الإجراء الموحد من الهاتف.')
+    while True:
         try:
-            n = int(self.headers.get('Content-Length','0') or 0)
-            payload = json.loads(self.rfile.read(n).decode('utf-8') or '{}')
-            result = run_job(payload)
-            self._json(200, result)
+            r = requests.get(api_url('/api/agent/next'), headers=cloud_headers(), timeout=25)
+            r.raise_for_status()
+            payload = r.json()
+            job = payload.get('job')
+            if not job:
+                time.sleep(poll)
+                continue
+            jid = str(job.get('id'))
+            print(f'[{time.strftime("%H:%M:%S")}] تنفيذ {jid} للشركة {job.get("companyCode")}')
+            try:
+                result = run_job(job)
+                complete_job(jid, True, result=result)
+                print(f'تم ✓ رقم الإجراء: {result.get("unifiedProcedureNo") or "غير مقروء تلقائياً"}')
+            except Exception as e:
+                complete_job(jid, False, error=str(e)[:500])
+                print(f'فشل: {e}')
+        except KeyboardInterrupt:
+            break
         except Exception as e:
-            self._json(500, {'ok':False,'error':str(e)})
-        finally:
-            JOB_LOCK.release()
-
-    def log_message(self, fmt, *args):
-        pass
+            print(f'اتصال السيرفر: {e}')
+            time.sleep(max(poll, 5))
 
 
 if __name__ == '__main__':
-    host = CFG.get('listen_host', '127.0.0.1')
-    port = int(CFG.get('listen_port', 8765))
-    print(f'Tarabil Local Agent {VERSION} running on http://{host}:{port}')
-    print('اترك هذه النافذة مفتوحة أثناء العمل. Ctrl+C للإغلاق.')
-    ThreadingHTTPServer((host, port), Handler).serve_forever()
+    main()

@@ -1,26 +1,29 @@
-# برنامج التحكم المحلي — رقم الإجراء الموحد
+# Tarabil Cloud Agent — جهاز ASYCUDA
 
-هذا الجزء يعمل على حاسبة Windows التي يوجد عليها ASYCUDA. الموقع لا يستطيع التحكم بتطبيق Java مباشرة، لذلك يتصل بخدمة محلية على 127.0.0.1 فقط.
+الوكيل يعمل على حاسبة Windows الموجودة عليها ASYCUDA. لا يحتاج فتح أي Port ولا Remote Desktop.
 
-## الإعداد الأول
+## 1) متغيرات Vercel
+أضف في مشروع Vercel:
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+- `TARABIL_AGENT_DEVICE_ID=asycuda-office-1`
+- `TARABIL_AGENT_DEVICE_TOKEN` قيمة سرية طويلة
+- `TARABIL_MOBILE_PIN` رقم سري للهاتف
 
-1. ثبّت Python 3.11 أو أحدث على Windows.
+## 2) تجهيز الحاسبة
+1. ثبت Python 3.11+.
 2. شغّل `install-agent.bat`.
-3. أدخل اسم مستخدم وكلمة مرور ASYCUDA. يتم حفظهما بواسطة Windows Credential Manager وليس داخل المشروع.
-4. إذا تستخدم WhatsApp Cloud API، أدخل Access Token وPhone Number ID وإصدار Graph API المدعوم في حسابك.
-5. ملف `AWIQWorld.jnlp` مرفق داخل مجلد البرنامج المحلي. إذا تريد استخدام نسخة أخرى، غيّر `jnlp_path` في `config.json`. إذا OpenWebStart/Java Web Start يفتح JNLP تلقائياً اترك `launcher_path` فارغاً.
-6. افتح ASYCUDA وشغّل `calibrate.py` مرة واحدة لتسجيل أماكن الحقول والأزرار حسب دقة شاشتك.
-7. شغّل `start-agent.bat` واترك النافذة مفتوحة.
-8. انسخ `agent_key` من `config.json` إلى خانة مفتاح الربط في صفحة «رقم الإجراء الموحد» بالنظام.
+3. عند الإعداد أدخل رابط مشروع Vercel و`TARABIL_AGENT_DEVICE_TOKEN` نفسه.
+4. أدخل بيانات ASYCUDA؛ تحفظ في Windows Credential Manager فقط.
+5. شغّل `calibrate.py` واضبط نقاط واجهة ASYCUDA.
+6. شغّل `start-agent.bat` واتركه يعمل.
+
+## 3) من الهاتف
+افتح صفحة «رقم الإجراء الموحد»، أدخل PIN، رمز الشركة، ورقم واتساب بصيغة دولية مثل `9647...` ثم اضغط إرسال.
+
+الـAgent يفحص السيرفر كل 3 ثوانٍ تقريباً، ينفذ الطلب ويرجع النتيجة. إذا الحاسبة مطفأة، يبقى الطلب Pending حتى تشغيلها.
 
 ## الأمان
-
-- الخدمة تستمع على `127.0.0.1` فقط، وليست متاحة لأجهزة الشبكة.
-- كلمة مرور ASYCUDA وWhatsApp Token محفوظان في Windows Credential Manager.
-- لا تضع كلمة المرور داخل `config.json` أو داخل كود Nuxt.
-- كل جهاز يحتاج معايرة مستقلة لأن إحداثيات واجهة ASYCUDA تختلف حسب الدقة وموقع النافذة.
-- نفّذ هذا فقط على حساب وجهاز مصرح لك باستخدامهما من جهة العمل.
-
-## ملاحظة WhatsApp
-
-الإرسال التلقائي مهيأ لـ WhatsApp Cloud API الرسمي. يجب إدخال إصدار Graph API المدعوم في حسابك وقيم الاعتماد الخاصة بك. إذا كان WhatsApp غير مفعّل، سيبقى البرنامج يأخذ لقطة الشاشة ويرجعها للنظام بدون إرسال.
+- لا توجد منافذ Inbound مفتوحة على حاسبة ASYCUDA.
+- كلمة مرور ASYCUDA وWhatsApp Token وDevice Token محفوظة في Windows Credential Manager.
+- نفذ التشغيل فقط على جهاز وحساب مصرح بهما من جهة العمل.
