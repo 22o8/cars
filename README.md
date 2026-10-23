@@ -31,3 +31,7 @@
 - لا تضبط Output Directory يدوياً.
 
 > استخدم الأتمتة فقط على جهاز وحساب ASYCUDA المصرح لك باستخدامهما من جهة العمل.
+
+
+## Safe connection test
+The Unified Procedure page includes a button labeled `للتجربة`. This creates a cloud job with `mode: test`. The Windows agent opens ASYCUDA, navigates only to the Unified Procedure page, captures a screenshot locally in `local-agent/screenshots`, and stops. It does not enter a company code and does not click the create/submit button.

@@ -17,7 +17,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '2.1.0-cloud-autostart'
+VERSION = '2.3.0-cloud-test-button'
 INSTANCE_LOCK_PORT = 47621
 
 if not CONFIG_PATH.exists():
@@ -107,12 +107,18 @@ def login_if_needed(was_launched: bool):
     time.sleep(float(asy.get('after_login_wait_seconds', 12)))
 
 
-def create_unified(company_code: str):
+def open_unified_page():
     asy = CFG['asycuda']
     launched = launch_asycuda()
     login_if_needed(launched)
     for p in asy.get('unified_menu_clicks', []):
         click_point(p, .6)
+    time.sleep(1.0)
+
+
+def create_unified(company_code: str):
+    asy = CFG['asycuda']
+    open_unified_page()
     click_point(asy['company_code_field'])
     paste_text(company_code)
     click_point(asy['submit_button'])
@@ -170,6 +176,17 @@ def send_whatsapp(path: Path, to: str, serial: str, company_name: str, result_no
 
 
 def run_job(job: dict):
+    mode = str(job.get('mode', 'create')).strip().lower()
+    if mode == 'test':
+        open_unified_page()
+        path = take_screenshot('TEST-unified-page')
+        return {
+            'unifiedProcedureNo': '',
+            'whatsappSent': False,
+            'screenshotCaptured': True,
+            'screenshotPath': str(path),
+        }
+
     code = str(job.get('companyCode', '')).strip()
     if not code:
         raise RuntimeError('رمز الشركة فارغ.')
@@ -180,7 +197,12 @@ def run_job(job: dict):
     result_number = read_result_number()
     path = take_screenshot(serial or code)
     sent = send_whatsapp(path, phone, serial, company, result_number) if phone else False
-    return {'unifiedProcedureNo': result_number, 'whatsappSent': sent, 'screenshotPath': str(path)}
+    return {
+        'unifiedProcedureNo': result_number,
+        'whatsappSent': sent,
+        'screenshotCaptured': True,
+        'screenshotPath': str(path),
+    }
 
 
 def cloud_headers():
@@ -202,7 +224,11 @@ def api_url(path: str):
 def complete_job(job_id: str, ok: bool, result=None, error=''):
     payload = {'id': job_id, 'ok': ok, 'error': error}
     if result:
-        payload.update({'unifiedProcedureNo': result.get('unifiedProcedureNo',''), 'whatsappSent': bool(result.get('whatsappSent'))})
+        payload.update({
+            'unifiedProcedureNo': result.get('unifiedProcedureNo',''),
+            'whatsappSent': bool(result.get('whatsappSent')),
+            'screenshotCaptured': bool(result.get('screenshotCaptured')),
+        })
     r = requests.post(api_url('/api/agent/complete'), headers=cloud_headers(), json=payload, timeout=25)
     r.raise_for_status()
 
@@ -222,11 +248,17 @@ def main():
                 time.sleep(poll)
                 continue
             jid = str(job.get('id'))
-            print(f'[{time.strftime("%H:%M:%S")}] تنفيذ {jid} للشركة {job.get("companyCode")}')
+            if str(job.get('mode', 'create')) == 'test':
+                print(f'[{time.strftime("%H:%M:%S")}] اختبار آمن {jid}: فتح صفحة رقم الإجراء + Screenshot فقط')
+            else:
+                print(f'[{time.strftime("%H:%M:%S")}] تنفيذ {jid} للشركة {job.get("companyCode")}')
             try:
                 result = run_job(job)
                 complete_job(jid, True, result=result)
-                print(f'تم ✓ رقم الإجراء: {result.get("unifiedProcedureNo") or "غير مقروء تلقائياً"}')
+                if str(job.get('mode', 'create')) == 'test':
+                    print('تم الاختبار ✓ لم يتم إدخال رمز شركة ولم يتم إنشاء إجراء موحد.')
+                else:
+                    print(f'تم ✓ رقم الإجراء: {result.get("unifiedProcedureNo") or "غير مقروء تلقائياً"}')
             except Exception as e:
                 complete_job(jid, False, error=str(e)[:500])
                 print(f'فشل: {e}')

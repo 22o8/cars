@@ -3,16 +3,18 @@ import type { Transaction } from '~/types'
 
 type CloudJob = {
   id:string
+  mode?:'create'|'test'
   status:'pending'|'processing'|'done'|'failed'
-  companyCode:string
+  companyCode?:string
   companyName?:string
-  whatsappNumber:string
+  whatsappNumber?:string
   serial?:string
   requestedAt:string
   startedAt?:string
   finishedAt?:string
   unifiedProcedureNo?:string
   whatsappSent?:boolean
+  screenshotCaptured?:boolean
   error?:string
   attempts:number
 }
@@ -51,6 +53,19 @@ function statusLabel(s:CloudJob['status']){
 }
 function statusClass(s:CloudJob['status']){ return `cloud-${s}` }
 function fmt(iso?:string){ if(!iso) return ''; try { return new Date(iso).toLocaleString('ar-IQ') } catch { return iso } }
+
+async function runConnectionTest(){
+  if(!mobilePin.value.trim()) return showError(new Error('أدخل رمز دخول الهاتف أولاً'))
+  sending.value = true
+  errorMessage.value = ''
+  try{
+    await $fetch('/api/unified/test', { method:'POST', headers:headers() })
+    successMessage.value = 'تم إرسال اختبار آمن للجهاز — لن يتم إنشاء أي إجراء موحد ✓'
+    setTimeout(()=>successMessage.value='', 4500)
+    await refreshAll()
+  }catch(e:any){ showError(e) }
+  finally{ sending.value=false; savePrefs() }
+}
 
 async function submitCloud(payload?:Partial<CloudJob>){
   if(!mobilePin.value.trim()) return showError(new Error('أدخل رمز دخول الهاتف أولاً'))
@@ -167,6 +182,14 @@ watch([mobilePin, whatsappNumber], savePrefs)
   <div v-if="errorMessage" class="notice danger">{{errorMessage}}</div>
   <div v-if="successMessage" class="notice success">{{successMessage}}</div>
 
+  <section class="card safe-test-card">
+    <div>
+      <h3 style="margin:0">اختبار الاتصال الآمن</h3>
+      <small class="muted">يفتح ASYCUDA ويصل إلى صفحة رقم الإجراء الموحد ويأخذ Screenshot فقط. لا يكتب رمز شركة ولا ينشئ إجراء.</small>
+    </div>
+    <button class="btn ghost test-only-btn" :disabled="sending" @click="runConnectionTest">{{sending?'جاري الاختبار...':'للتجربة'}}</button>
+  </section>
+
   <section class="card mobile-unified-card">
     <div class="section-title">
       <div><h3 style="margin:0">إرسال سريع من الهاتف</h3><small class="muted">كل ما تحتاجه: رمز الشركة ورقم واتساب</small></div>
@@ -203,15 +226,22 @@ watch([mobilePin, whatsappNumber], savePrefs)
     <div v-else class="cloud-job-list">
       <article v-for="job in jobs" :key="job.id" class="cloud-job-row">
         <div class="cloud-job-main">
-          <b>{{job.companyName || `شركة ${job.companyCode}`}}</b>
-          <small>رمز الشركة: {{job.companyCode}} · واتساب: {{job.whatsappNumber}}</small>
+          <b>{{job.mode==='test' ? 'اختبار الاتصال بالأسيكودا' : (job.companyName || `شركة ${job.companyCode}`)}}</b>
+          <small v-if="job.mode==='test'">فتح صفحة رقم الإجراء الموحد + Screenshot فقط — بدون إنشاء</small>
+          <small v-else>رمز الشركة: {{job.companyCode}} · واتساب: {{job.whatsappNumber}}</small>
           <small v-if="job.serial">المعاملة: {{job.serial}}</small>
         </div>
         <div class="cloud-job-state" :class="statusClass(job.status)">{{statusLabel(job.status)}}</div>
         <div class="cloud-job-result">
           <template v-if="job.status==='done'">
-            <small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع الصورة المرسلة'}}</b>
-            <span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم التنفيذ بدون إرسال واتساب'}}</span>
+            <template v-if="job.mode==='test'">
+              <small>نتيجة الاختبار</small><b>تم فتح صفحة رقم الإجراء الموحد ✓</b>
+              <span>{{job.screenshotCaptured?'تم أخذ Screenshot — بدون إنشاء أي إجراء':'تم الاختبار بدون إنشاء إجراء'}}</span>
+            </template>
+            <template v-else>
+              <small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع الصورة المرسلة'}}</b>
+              <span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم التنفيذ بدون إرسال واتساب'}}</span>
+            </template>
           </template>
           <template v-else-if="job.status==='failed'">
             <small>سبب الفشل</small><b class="danger-text">{{job.error || 'فشل التنفيذ'}}</b>

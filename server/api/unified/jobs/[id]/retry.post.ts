@@ -14,6 +14,7 @@ export default defineEventHandler(async (event) => {
   job.finishedAt = undefined
   job.unifiedProcedureNo = ''
   job.whatsappSent = false
+  job.screenshotCaptured = false
   await setJson(event, jobKey(id), job)
   await redisCommand(event, ['LPUSH', queueKey(job.deviceId), id])
   return { ok: true, job }
