@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id') || ''
   const job = await getJson<UnifiedCloudJob>(event, jobKey(id))
   if (!job) throw createError({ statusCode: 404, statusMessage: 'الطلب غير موجود.' })
+  if (!job.kind) job.kind = job.companyCode ? 'execute' : 'test'
   if (job.status === 'processing') throw createError({ statusCode: 409, statusMessage: 'الطلب قيد التنفيذ حالياً.' })
   job.status = 'pending'
   job.error = ''

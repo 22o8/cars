@@ -1,6 +1,9 @@
 export type UnifiedJobStatus = 'pending' | 'processing' | 'done' | 'failed'
+export type UnifiedJobKind = 'execute' | 'test'
+
 export interface UnifiedCloudJob {
   id: string
+  kind: UnifiedJobKind
   status: UnifiedJobStatus
   deviceId: string
   companyCode: string
@@ -12,6 +15,8 @@ export interface UnifiedCloudJob {
   finishedAt?: string
   unifiedProcedureNo?: string
   whatsappSent?: boolean
+  screenshotTaken?: boolean
+  screenshotName?: string
   error?: string
   attempts: number
 }

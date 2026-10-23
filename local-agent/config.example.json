@@ -5,20 +5,45 @@
     "poll_seconds": 3
   },
   "asycuda": {
-    "window_title_contains": ["نظام الأسيكودا العالمي", "ASYCUDAWorld", "ASYCUDA"],
+    "window_title_contains": [
+      "نظام الأسيكودا العالمي",
+      "ASYCUDAWorld",
+      "ASYCUDA"
+    ],
     "jnlp_path": "AWIQWorld.jnlp",
     "launcher_path": "",
     "launch_wait_seconds": 18,
     "after_login_wait_seconds": 12,
     "after_submit_wait_seconds": 5,
-    "login_username": [0, 0],
-    "login_password": [0, 0],
-    "login_button": [0, 0],
+    "login_username": [
+      0,
+      0
+    ],
+    "login_password": [
+      0,
+      0
+    ],
+    "login_button": [
+      0,
+      0
+    ],
     "unified_menu_clicks": [],
-    "company_code_field": [0, 0],
-    "submit_button": [0, 0],
+    "company_code_field": [
+      0,
+      0
+    ],
+    "submit_button": [
+      0,
+      0
+    ],
     "screenshot_region": null,
-    "result_number_field": null
+    "result_number_field": null,
+    "security_warning_timeout_seconds": 40,
+    "startup_timeout_seconds": 120,
+    "login_timeout_seconds": 150,
+    "main_ready_grace_seconds": 2.0,
+    "menu_step_wait_seconds": 1.4,
+    "unified_ready_wait_seconds": 4.0
   },
   "whatsapp": {
     "enabled": false,

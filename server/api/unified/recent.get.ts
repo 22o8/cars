@@ -8,7 +8,10 @@ export default defineEventHandler(async (event) => {
   const jobs: UnifiedCloudJob[] = []
   for (const id of ids) {
     const job = await getJson<UnifiedCloudJob>(event, jobKey(id))
-    if (job) jobs.push(job)
+    if (job) {
+      if (!job.kind) job.kind = job.companyCode ? 'execute' : 'test'
+      jobs.push(job)
+    }
   }
   return { ok: true, jobs }
 })

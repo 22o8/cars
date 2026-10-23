@@ -3,6 +3,7 @@ import type { Transaction } from '~/types'
 
 type CloudJob = {
   id:string
+  kind?:'execute'|'test'
   status:'pending'|'processing'|'done'|'failed'
   companyCode:string
   companyName?:string
@@ -13,6 +14,8 @@ type CloudJob = {
   finishedAt?:string
   unifiedProcedureNo?:string
   whatsappSent?:boolean
+  screenshotTaken?:boolean
+  screenshotName?:string
   error?:string
   attempts:number
 }
@@ -75,6 +78,20 @@ async function submitCloud(payload?:Partial<CloudJob>){
     if(!payload){ companyCode.value=''; companyName.value='' }
     await refreshAll()
     return res?.job
+  }catch(e:any){ showError(e) }
+  finally{ sending.value=false; savePrefs() }
+}
+
+
+async function submitTest(){
+  if(!mobilePin.value.trim()) return showError(new Error('أدخل رمز دخول الهاتف أولاً'))
+  sending.value = true
+  errorMessage.value = ''
+  try{
+    await $fetch('/api/unified/test', { method:'POST', headers:headers() })
+    successMessage.value = 'تم إرسال اختبار آمن للجهاز — لن يتم إنشاء أي إجراء موحد'
+    setTimeout(()=>successMessage.value='', 4000)
+    await refreshAll()
   }catch(e:any){ showError(e) }
   finally{ sending.value=false; savePrefs() }
 }
@@ -170,6 +187,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
   <section class="card mobile-unified-card">
     <div class="section-title">
       <div><h3 style="margin:0">إرسال سريع من الهاتف</h3><small class="muted">كل ما تحتاجه: رمز الشركة ورقم واتساب</small></div>
+      <button class="btn ghost" :disabled="sending" @click="submitTest">للتجربة</button>
     </div>
 
     <div class="mobile-form-grid">
@@ -203,13 +221,23 @@ watch([mobilePin, whatsappNumber], savePrefs)
     <div v-else class="cloud-job-list">
       <article v-for="job in jobs" :key="job.id" class="cloud-job-row">
         <div class="cloud-job-main">
-          <b>{{job.companyName || `شركة ${job.companyCode}`}}</b>
-          <small>رمز الشركة: {{job.companyCode}} · واتساب: {{job.whatsappNumber}}</small>
-          <small v-if="job.serial">المعاملة: {{job.serial}}</small>
+          <template v-if="job.kind==='test'">
+            <b>اختبار الاتصال بالأسيكودا</b>
+            <small>يفتح الأسيكودا ويصل إلى صفحة رقم الإجراء الموحد ويلتقط Screenshot فقط.</small>
+          </template>
+          <template v-else>
+            <b>{{job.companyName || `شركة ${job.companyCode}`}}</b>
+            <small>رمز الشركة: {{job.companyCode}} · واتساب: {{job.whatsappNumber}}</small>
+            <small v-if="job.serial">المعاملة: {{job.serial}}</small>
+          </template>
         </div>
         <div class="cloud-job-state" :class="statusClass(job.status)">{{statusLabel(job.status)}}</div>
         <div class="cloud-job-result">
-          <template v-if="job.status==='done'">
+          <template v-if="job.status==='done' && job.kind==='test'">
+            <small>نتيجة الاختبار</small><b>نجح الاختبار — لم يتم إنشاء أي إجراء موحد</b>
+            <span v-if="job.screenshotTaken">تم أخذ Screenshot على جهاز الأسيكودا<span v-if="job.screenshotName">: {{job.screenshotName}}</span></span>
+          </template>
+          <template v-else-if="job.status==='done'">
             <small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع الصورة المرسلة'}}</b>
             <span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم التنفيذ بدون إرسال واتساب'}}</span>
           </template>

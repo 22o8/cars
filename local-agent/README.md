@@ -35,3 +35,15 @@
 يمكن تعطيل التشغيل التلقائي بواسطة `remove-autostart.bat`.
 
 مهم: أتمتة واجهة ASYCUDA تحتاج جلسة Windows تفاعلية. بعد إعادة تشغيل الجهاز، سيصبح الوكيل متصلاً فور تسجيل دخول مستخدم Windows. إذا بقي الجهاز على شاشة تسجيل الدخول أو كانت الجلسة غير متاحة، لا يمكن تنفيذ نقرات واجهة ASYCUDA حتى تسجيل الدخول.
+
+## Smart launch / waiting (v2.4)
+The agent no longer relies on a fixed launch sleep. It now:
+1. launches AWIQWorld.jnlp,
+2. detects the Java `Security Warning`, checks `I accept the risk...`, and clicks `Run`,
+3. waits for the real ASYCUDA login window,
+4. signs in only after the login window exists,
+5. waits for the large main ASYCUDA window after login,
+6. executes calibrated navigation with a wait between UI steps,
+7. waits again for the unified-procedure page before taking a test screenshot or entering data.
+
+Existing `config.json` and Windows Credential Manager secrets can be preserved. After copying the new local-agent files, run `update-agent.bat` once to install pywinauto and restart the agent.
