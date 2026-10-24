@@ -2,6 +2,7 @@
 const route = useRoute()
 const id = String(route.params.id || '')
 const mobilePin = ref('')
+const pinDraft = ref('')
 const job = ref<any>(null)
 const loading = ref(true)
 const busy = ref(false)
@@ -19,6 +20,15 @@ function reviewStateLabel(s?:string){
   const map:any={NOTIFICATIONS_POPUP:'نافذة إشعارات',NOTIFICATIONS_PAGE:'صفحة الإشعارات/الرسائل',OTHER_PAGE_OPEN:'صفحة أخرى مفتوحة',PREDECLARATION_OPEN:'بيان مسبق مفتوح',DECLARATION_OPEN:'بيان مفتوح',UNKNOWN_POPUP:'نافذة غير معروفة',MANUAL_INTERVENTION:'شاشة تحتاج مراجعة',UNKNOWN_SCREEN:'شاشة غير متوقعة'}
   return map[s || ''] || s || 'شاشة غير متوقعة'
 }
+async function unlockDetails(){
+  const pin = pinDraft.value.trim()
+  if(!pin){ errorMessage.value='أدخل رمز دخول الهاتف'; return }
+  mobilePin.value=pin
+  if(import.meta.client) sessionStorage.setItem('tarabil.mobile.pin', pin)
+  loading.value=true
+  await refresh()
+}
+
 async function loadScreenshots(){
   if(import.meta.server || !job.value || !mobilePin.value) return
   async function fetchShot(url:string, oldUrl:string){
@@ -98,6 +108,7 @@ async function remove(){
 
 onMounted(async()=>{
   mobilePin.value=sessionStorage.getItem('tarabil.mobile.pin') || ''
+  pinDraft.value=mobilePin.value
   await refresh()
   timer=setInterval(refresh,3000)
 })
@@ -107,7 +118,14 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
 <template>
   <div class="page-head"><div><h1>تفاصيل طلب الإجراء الموحد</h1><p>متابعة مباشرة لما يحدث على جهاز ASYCUDA</p></div><NuxtLink class="btn ghost" to="/unified-procedure">رجوع</NuxtLink></div>
   <div v-if="errorMessage" class="notice danger">{{errorMessage}}</div>
-  <section v-if="!mobilePin" class="card"><h3>رمز دخول الهاتف مطلوب</h3><p>ارجع إلى صفحة رقم الإجراء الموحد وأدخل PIN أولاً.</p></section>
+  <section v-if="!mobilePin" class="card pin-unlock-card">
+    <h3>رمز دخول الهاتف مطلوب</h3>
+    <p>أدخل نفس PIN المستخدم في صفحة رقم الإجراء الموحد لفتح تفاصيل هذا الطلب.</p>
+    <div class="pin-unlock-row">
+      <input v-model="pinDraft" class="input" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" @keyup.enter="unlockDetails">
+      <button class="btn primary" @click="unlockDetails">فتح الطلب</button>
+    </div>
+  </section>
   <section v-else-if="loading" class="card"><p>جاري تحميل الطلب...</p></section>
   <template v-else-if="job">
     <section class="card detail-summary">
@@ -159,5 +177,5 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
 </template>
 
 <style scoped>
-.detail-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}.detail-summary>div{display:flex;flex-direction:column;gap:5px}.detail-summary small,.review-head p{color:#76838b}.review-card{overflow:hidden}.review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.review-head h2{margin:0 0 5px}.review-head p{margin:0}.review-pill{background:#fff0cc;color:#8a5b00;border-radius:999px;padding:7px 12px;font-weight:700}.review-message{font-size:1rem}.shot-wrap{background:#111;border-radius:14px;padding:8px;display:flex;justify-content:center;max-height:68vh;overflow:auto}.shot-wrap img{max-width:100%;height:auto;border-radius:9px}.shot-empty{padding:34px;text-align:center;background:#f5f7f8;border-radius:12px;color:#7a858b}.decision-actions,.detail-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.history-list{display:grid;gap:9px}.history-list>div{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #edf0f1}.history-review{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.history-shot{margin-top:16px}@media(max-width:720px){.review-head,.history-list>div{flex-direction:column}.decision-actions .btn,.detail-actions .btn{width:100%}}
+.detail-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}.detail-summary>div{display:flex;flex-direction:column;gap:5px}.detail-summary small,.review-head p{color:#76838b}.review-card{overflow:hidden}.review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.review-head h2{margin:0 0 5px}.review-head p{margin:0}.review-pill{background:#fff0cc;color:#8a5b00;border-radius:999px;padding:7px 12px;font-weight:700}.review-message{font-size:1rem}.shot-wrap{background:#111;border-radius:14px;padding:8px;display:flex;justify-content:center;max-height:68vh;overflow:auto}.shot-wrap img{max-width:100%;height:auto;border-radius:9px}.shot-empty{padding:34px;text-align:center;background:#f5f7f8;border-radius:12px;color:#7a858b}.decision-actions,.detail-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.history-list{display:grid;gap:9px}.history-list>div{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #edf0f1}.history-review{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.history-shot{margin-top:16px}.pin-unlock-row{display:flex;gap:10px;align-items:center}.pin-unlock-row .input{max-width:320px}@media(max-width:720px){.pin-unlock-row{flex-direction:column;align-items:stretch}.pin-unlock-row .input{max-width:none}.review-head,.history-list>div{flex-direction:column}.decision-actions .btn,.detail-actions .btn{width:100%}}
 </style>

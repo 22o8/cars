@@ -142,6 +142,11 @@ async function refreshAgent(){
 
 async function refreshAll(){ await Promise.all([refreshJobs(), refreshAgent()]) }
 
+async function openDetails(job:CloudJob){
+  savePrefs()
+  await navigateTo(`/unified-procedure/${job.id}`)
+}
+
 async function retry(job:CloudJob){
   try{
     await $fetch(`/api/unified/jobs/${job.id}/retry`, { method:'POST', headers:headers() })
@@ -310,7 +315,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
           <template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template>
         </div>
         <div class="cloud-job-actions">
-          <NuxtLink class="btn primary" :to="`/unified-procedure/${job.id}`">فتح التفاصيل</NuxtLink>
+          <button class="btn primary" @click="openDetails(job)">{{job.status==='needs_review'?'عرض الصورة واتخاذ القرار':'فتح التفاصيل'}}</button>
           <button v-if="job.status==='pending' || job.status==='processing' || job.status==='needs_review' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button>
           <button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button>
           <button class="btn ghost" @click="deleteJob(job)">حذف</button>

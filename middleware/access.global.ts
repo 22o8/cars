@@ -6,7 +6,8 @@ export default defineNuxtRouteMiddleware((to) => {
   if (role === 'admin') return
 
   if (role === 'unified') {
-    if (to.path !== '/unified-procedure') return navigateTo('/unified-procedure')
+    // موظف رقم الإجراء يحتاج صفحة القائمة وصفحات تفاصيل الطلبات أيضاً.
+    if (!to.path.startsWith('/unified-procedure')) return navigateTo('/unified-procedure')
     return
   }
 
