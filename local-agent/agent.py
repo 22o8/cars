@@ -12,6 +12,7 @@ import pyautogui
 import pygetwindow as gw
 import requests
 from pywinauto import Desktop
+from pywinauto.keyboard import send_keys
 
 import threading
 import atexit
@@ -22,7 +23,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '5.1.0-hybrid-resilient'
+VERSION = '5.2.0-hybrid-security-fix'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 
@@ -104,52 +105,202 @@ def _wait_until(predicate, timeout: float, interval: float = .4, description: st
 
 
 def _security_dialog():
-    """Return the Java Security Warning dialog if it is visible."""
+    """Return a visible Java Security Warning dialog wrapper.
+
+    Prefer UIA, but keep a Win32 fallback because old Java 8 dialogs expose
+    controls differently across Windows builds.
+    """
     for backend in ('uia', 'win32'):
         try:
             desktop = Desktop(backend=backend)
             wins = desktop.windows(title_re=r'.*Security Warning.*', visible_only=True)
             if wins:
-                return wins[0]
+                return wins[0], backend
         except Exception:
             continue
-    return None
+    return None, None
+
+
+def _safe_window_texts(dlg):
+    out = []
+    try:
+        out.append(dlg.window_text())
+    except Exception:
+        pass
+    try:
+        for item in dlg.descendants():
+            try:
+                t = item.window_text()
+                if t:
+                    out.append(t)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return out
+
+
+def _is_trusted_asycuda_security_warning(dlg) -> bool:
+    text = ' '.join(_safe_window_texts(dlg)).casefold()
+    return (
+        'security warning' in text
+        and ('asy.mof.gov.iq' in text or 'https://asy.mof.gov.iq' in text)
+        and 'do you want to run this application' in text
+    )
+
+
+def _find_risk_checkbox_and_run(dlg):
+    """Find Java 8 risk checkbox and Run button without screen coordinates."""
+    checkbox = None
+    run_button = None
+
+    try:
+        descendants = dlg.descendants()
+    except Exception:
+        descendants = []
+
+    # Text/role based discovery first. On Java 8 the checkbox can appear as a
+    # Win32 Button rather than a UIA CheckBox, so do not require one control type.
+    for item in descendants:
+        try:
+            name = (item.window_text() or '').strip()
+        except Exception:
+            name = ''
+        low = name.casefold()
+        if checkbox is None and 'i accept the risk and want to run this application' in low:
+            checkbox = item
+        if run_button is None and name.casefold() == 'run':
+            run_button = item
+
+    # UIA can sometimes expose names only through element_info.name.
+    if checkbox is None or run_button is None:
+        for item in descendants:
+            try:
+                name = (getattr(item.element_info, 'name', '') or '').strip()
+            except Exception:
+                continue
+            low = name.casefold()
+            if checkbox is None and 'i accept the risk and want to run this application' in low:
+                checkbox = item
+            if run_button is None and low == 'run':
+                run_button = item
+
+    return checkbox, run_button
+
+
+def _activate_checkbox(control) -> bool:
+    """Enable the checkbox using semantics first, then a control click."""
+    if control is None:
+        return False
+    try:
+        state = control.get_toggle_state()
+        if state == 1:
+            return True
+        control.toggle()
+        time.sleep(.3)
+        try:
+            return control.get_toggle_state() == 1
+        except Exception:
+            return True
+    except Exception:
+        pass
+    try:
+        # click_input clicks the discovered control itself, not a stored desktop coordinate.
+        control.click_input()
+        time.sleep(.3)
+        return True
+    except Exception:
+        return False
+
+
+def _activate_run(control) -> bool:
+    if control is None:
+        return False
+    # Give Java a moment to enable Run after accepting the risk.
+    for _ in range(15):
+        try:
+            if hasattr(control, 'is_enabled') and not control.is_enabled():
+                time.sleep(.2)
+                continue
+        except Exception:
+            pass
+        for method in ('invoke', 'click_input', 'click'):
+            try:
+                fn = getattr(control, method)
+                fn()
+                return True
+            except Exception:
+                continue
+        time.sleep(.2)
+    return False
+
+
+def _security_keyboard_fallback(dlg) -> bool:
+    """Keyboard-only fallback for the *trusted* official Java warning.
+
+    It is intentionally conservative: it is used only after the dialog title,
+    official host and prompt text were verified. Java 8's dialog normally opens
+    with Cancel focused. Shift+Tab reaches the acceptance checkbox (disabled Run
+    is skipped on common Java 8 builds), Space checks it, then Tab reaches Run.
+    """
+    try:
+        dlg.set_focus()
+        time.sleep(.3)
+        # Try one and two reverse tabs because focus behavior differs by JRE build.
+        for reverse_tabs in (1, 2):
+            dlg.set_focus()
+            send_keys('+{TAB}' * reverse_tabs, pause=.12)
+            send_keys('{SPACE}', pause=.2)
+            # Run should now be enabled. Tab forward until Enter closes the dialog.
+            for _ in range(3):
+                send_keys('{TAB}', pause=.12)
+                send_keys('{ENTER}', pause=.2)
+                time.sleep(.5)
+                current, _ = _security_dialog()
+                if current is None:
+                    return True
+        return False
+    except Exception:
+        return False
 
 
 def _click_security_warning_if_present(timeout=40):
     deadline = time.monotonic() + timeout
+    last_detail = ''
     while time.monotonic() < deadline:
-        dlg = _security_dialog()
+        dlg, backend = _security_dialog()
         if dlg:
-            text = ' '.join(x.window_text() for x in dlg.descendants()).casefold()
-            # The Iraqi ASYCUDA Java warning does not necessarily contain the product name.
-            # Trust it only when the official Ministry of Finance ASYCUDA host is visible.
-            trusted_warning = (
-                'asy.mof.gov.iq' in text
-                or 'https://asy.mof.gov.iq' in text
-                or 'asycuda' in text
-                or 'awiqworld' in text
-            )
-            if not trusted_warning:
-                raise NavigationError('manual_intervention_required', 'Java Security Warning is not recognized as the official ASYCUDA launcher')
-            # Require the exact risk checkbox and Run control. No positional fallback.
-            boxes = [x for x in dlg.descendants() if
-                     'i accept the risk and want to run this application' in x.window_text().lower()]
-            buttons = [x for x in dlg.descendants() if x.window_text().strip() == 'Run']
-            if len(boxes) != 1 or len(buttons) != 1:
-                raise NavigationError('manual_intervention_required', 'تعذر تحديد عناصر تحذير Java بأمان')
-            box = boxes[0]
-            if not hasattr(box, 'get_toggle_state') or not hasattr(box, 'toggle'):
-                raise NavigationError('manual_intervention_required', 'تحذير Java يحتاج إلى تدخل يدوي')
-            if box.get_toggle_state() != 1:
-                box.toggle()
-            buttons[0].invoke()
-            _wait_until(lambda: _security_dialog() is None, 20, .3, 'Java warning')
-            return True
-        if find_asycuda_window(): return False
-        time.sleep(.4)
-    return False
+            if not _is_trusted_asycuda_security_warning(dlg):
+                raise NavigationError(
+                    'manual_intervention_required',
+                    'Java Security Warning appeared, but it was not verified as the official asy.mof.gov.iq launcher.'
+                )
 
+            checkbox, run_button = _find_risk_checkbox_and_run(dlg)
+            last_detail = f'backend={backend}, checkbox={checkbox is not None}, run={run_button is not None}'
+
+            if checkbox is not None and run_button is not None:
+                if _activate_checkbox(checkbox) and _activate_run(run_button):
+                    _wait_until(lambda: _security_dialog()[0] is None, 20, .25, 'Java Security Warning to close')
+                    log('Java Security Warning accepted automatically.')
+                    return True
+
+            # Old Java 8 sometimes does not expose the checkbox role correctly.
+            # Use a keyboard fallback only after the official host was verified.
+            if _security_keyboard_fallback(dlg):
+                _wait_until(lambda: _security_dialog()[0] is None, 20, .25, 'Java Security Warning to close')
+                log('Java Security Warning accepted through safe keyboard fallback.')
+                return True
+
+            raise NavigationError(
+                'manual_intervention_required',
+                'Official Java Security Warning detected, but its controls could not be activated safely. ' + last_detail
+            )
+
+        if find_asycuda_window():
+            return False
+        time.sleep(.35)
+    return False
 
 def _wait_for_asycuda_window(timeout: float = 90.0):
     return _wait_until(find_asycuda_window, timeout, .5, 'ASYCUDA window')
