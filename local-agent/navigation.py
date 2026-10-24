@@ -52,9 +52,13 @@ def detect_state(snapshot):
             if labels.intersection({norm('رمز الشركة'), 'company code'}) and any(n['role'] in ('text', 'combo box') and 'enabled' in n['states'] for n in content):
                 return {'state': 'UNIFIED_PROCEDURE_OPEN', 'frame': frame['id']}
         if any(s in title for s in ('البيان المسبق', 'pre-declaration', 'pre declaration')):
-            return {'state': 'PREDECLARATION_OPEN'}
+            return {'state': 'PREDECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name','')}
         if any(s in title for s in ('بيان', 'declaration')):
-            return {'state': 'DECLARATION_OPEN'}
+            return {'state': 'DECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name','')}
+        if any(s in title for s in ('اشعار', 'الاشعارات', 'رسائل', 'صندوق البريد', 'notification', 'mailbox', 'message')):
+            return {'state': 'NOTIFICATIONS_PAGE', 'frame': frame['id'], 'title': frame.get('name','')}
+    if frames:
+        return {'state': 'OTHER_PAGE_OPEN', 'frame': frames[0]['id'], 'title': frames[0].get('name','')}
     return {'state': 'MAIN_SCREEN' if nodes else 'LOADING'}
 
 def plan(snapshot):

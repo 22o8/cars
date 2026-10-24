@@ -1,11 +1,15 @@
 from __future__ import annotations
 import json
+import base64
+import io
 import os
 import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
+import xml.etree.ElementTree as ET
 
 import keyring
 import pyautogui
@@ -13,6 +17,7 @@ import pygetwindow as gw
 import requests
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
+from PIL import Image
 
 import threading
 import atexit
@@ -23,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '5.4.0-clean-stable'
+VERSION = '5.8.0-interactive-review'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -128,6 +133,33 @@ def _wait_until(predicate, timeout: float, interval: float = .4, description: st
     raise RuntimeError(f'Timed out waiting for {description}.')
 
 
+
+
+def _official_jnlp_source(jnlp_path: str | Path) -> tuple[bool, str]:
+    """Validate the local JNLP before we auto-accept Java's warning.
+
+    Java 8 often does not expose the visible Location label through UIA/Win32.
+    Instead of trusting missing UI text, verify the exact JNLP *we are about to
+    launch*. Auto-accept is allowed only when that file declares HTTPS codebase
+    on the official asy.mof.gov.iq host.
+    """
+    try:
+        path = Path(jnlp_path).resolve()
+        root = ET.parse(path).getroot()
+        codebase = (root.attrib.get('codebase') or '').strip()
+        href = (root.attrib.get('href') or '').strip()
+        parsed = urlparse(codebase)
+        trusted = (
+            parsed.scheme.lower() == 'https'
+            and (parsed.hostname or '').lower() == 'asy.mof.gov.iq'
+            and href.casefold().endswith('.jnlp')
+        )
+        detail = f'codebase={codebase or "(missing)"}, href={href or "(missing)"}'
+        return trusted, detail
+    except Exception as exc:
+        return False, f'JNLP validation failed: {type(exc).__name__}: {exc}'
+
+
 def _security_dialog():
     """Return a visible Java Security Warning dialog wrapper.
 
@@ -164,13 +196,23 @@ def _safe_window_texts(dlg):
     return out
 
 
-def _is_trusted_asycuda_security_warning(dlg) -> bool:
+def _is_trusted_asycuda_security_warning(dlg, trusted_launch: bool = False) -> bool:
+    """Trust the dialog either from exposed UI text or verified launch context.
+
+    Old Oracle Java 8 dialogs can render Location on screen without exposing it
+    to UI Automation. In that case trusted_launch is safe only when launch_asycuda
+    already validated the exact JNLP codebase and there was no pre-existing
+    Security Warning before starting it.
+    """
     text = ' '.join(_safe_window_texts(dlg)).casefold()
-    return (
-        'security warning' in text
-        and ('asy.mof.gov.iq' in text or 'https://asy.mof.gov.iq' in text)
-        and 'do you want to run this application' in text
-    )
+    prompt_ok = ('do you want to run this application' in text) or trusted_launch
+    host_ok = ('asy.mof.gov.iq' in text or 'https://asy.mof.gov.iq' in text) or trusted_launch
+    title_ok = 'security warning' in text
+    try:
+        title_ok = title_ok or 'security warning' in (dlg.window_text() or '').casefold()
+    except Exception:
+        pass
+    return bool(title_ok and prompt_ok and host_ok)
 
 
 def _find_risk_checkbox_and_run(dlg):
@@ -348,17 +390,17 @@ def _security_absolute_fallback(dlg) -> bool:
         return False
 
 
-def _click_security_warning_if_present(timeout=40):
+def _click_security_warning_if_present(timeout=40, trusted_launch: bool = False):
     deadline = time.monotonic() + timeout
     last_detail = ''
     while time.monotonic() < deadline:
         check_cancelled()
         dlg, backend = _security_dialog()
         if dlg:
-            if not _is_trusted_asycuda_security_warning(dlg):
+            if not _is_trusted_asycuda_security_warning(dlg, trusted_launch=trusted_launch):
                 raise NavigationError(
                     'manual_intervention_required',
-                    'Java Security Warning appeared, but it was not verified as the official asy.mof.gov.iq launcher.'
+                    'Java Security Warning appeared, but neither its UI text nor the verified JNLP launch context proved it belongs to asy.mof.gov.iq.'
                 )
 
             checkbox, run_button = _find_risk_checkbox_and_run(dlg)
@@ -415,14 +457,34 @@ def launch_asycuda():
     if not jnlp or not Path(jnlp).exists():
         raise RuntimeError('AWIQWorld.jnlp path is invalid in config.json.')
 
-    log('Launching ASYCUDA...')
+    # Never auto-accept a Java warning that was already on screen before this job.
+    preexisting_warning, _ = _security_dialog()
+    if preexisting_warning is not None:
+        raise NavigationError(
+            'manual_intervention_required',
+            'A Java Security Warning was already open before ASYCUDA launch. Close it manually, then retry.'
+        )
+
+    trusted_jnlp, trust_detail = _official_jnlp_source(jnlp)
+    if not trusted_jnlp:
+        raise NavigationError(
+            'manual_intervention_required',
+            'The configured JNLP is not the verified HTTPS asy.mof.gov.iq launcher. ' + trust_detail
+        )
+
+    log('Launching ASYCUDA from verified official JNLP...')
     if launcher:
         subprocess.Popen([launcher, jnlp], close_fds=True)
     else:
         os.startfile(jnlp)
 
-    # Do NOT use a fixed 18-second sleep. Handle the Java warning, then wait for the real window.
-    _click_security_warning_if_present(float(asy.get('security_warning_timeout_seconds', 40)))
+    # Java 8 may hide the visible Location label from UIA. Because this warning
+    # appeared only after we validated and launched the official JNLP, allow the
+    # trusted launch context to authenticate it.
+    _click_security_warning_if_present(
+        float(asy.get('security_warning_timeout_seconds', 40)),
+        trusted_launch=True,
+    )
     win = _wait_for_asycuda_window(float(asy.get('startup_timeout_seconds', 120)))
     focus_window(win)
     return True
@@ -432,19 +494,159 @@ HELPER = JABClient(BASE)
 atexit.register(HELPER.close)
 
 
-def ensure_unified_procedure_screen():
+def _review_copy(state: str):
+    mapping = {
+        'NOTIFICATIONS_POPUP': ('ظهرت صفحة الإشعارات', 'تم إيقاف الطلب مؤقتاً لأن إشعارات ASYCUDA ظهرت. راجع الصورة واختر إغلاقها والمتابعة أو إبقاءها وإيقاف الطلب.'),
+        'NOTIFICATIONS_PAGE': ('صفحة الإشعارات مفتوحة', 'وجد النظام صفحة إشعارات/رسائل مفتوحة داخل ASYCUDA. راجع الصورة وحدد هل تريد إغلاق الصفحة والمتابعة.'),
+        'OTHER_PAGE_OPEN': ('توجد صفحة أخرى مفتوحة', 'وجد النظام صفحة داخلية غير متوقعة مفتوحة في ASYCUDA. راجع الصورة قبل إغلاقها أو إيقاف الطلب.'),
+        'PREDECLARATION_OPEN': ('يوجد بيان مسبق مفتوح', 'وجد النظام بياناً مسبقاً مفتوحاً قبل الوصول إلى رقم الإجراء الموحد. راجع الصورة وحدد هل تريد إغلاق الصفحة والمتابعة.'),
+        'DECLARATION_OPEN': ('يوجد بيان مفتوح', 'وجد النظام بياناً مفتوحاً داخل ASYCUDA. راجع الصورة وحدد هل تريد إغلاق الصفحة والمتابعة.'),
+        'UNKNOWN_POPUP': ('ظهرت نافذة غير معروفة', 'لن يضغط النظام أي زر داخل هذه النافذة قبل قرارك.'),
+        'MANUAL_INTERVENTION': ('تحتاج الشاشة إلى قرار', 'ظهرت نافذة حفظ أو تأكيد أو حالة حساسة. راجع الصورة قبل المتابعة.'),
+    }
+    return mapping.get(state, ('ظهرت شاشة غير متوقعة', 'تم إيقاف الطلب مؤقتاً حتى تراجع الشاشة وتحدد الإجراء المناسب.'))
+
+
+def _encode_review_screenshot(path: Path):
+    with Image.open(path) as img:
+        img = img.convert('RGB')
+        img.thumbnail((1400, 1000))
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=72, optimize=True)
+    return base64.b64encode(buf.getvalue()).decode('ascii'), 'image/jpeg'
+
+
+def _send_review(job_id: str, state: str):
+    title, message = _review_copy(state)
+    path = take_screenshot('review-' + state.lower())
+    encoded, mime = _encode_review_screenshot(path)
+    payload = {
+        'state': state,
+        'title': title,
+        'message': message,
+        'screenshotMime': mime,
+        'screenshotBase64': encoded,
+    }
+    response = None
+    last_error = None
+    for _ in range(5):
+        check_cancelled()
+        try:
+            response = requests.post(
+                api_url(f'/api/agent/jobs/{job_id}/review'),
+                headers=cloud_headers(), json=payload, timeout=35
+            )
+            response.raise_for_status()
+            break
+        except Exception as exc:
+            last_error = exc
+            time.sleep(1.5)
+    if response is None or not response.ok:
+        raise NavigationError('review_upload_failed', f'تعذر رفع صورة المراجعة إلى النظام: {last_error or "network error"}')
+    review = response.json().get('review') or {}
+    review_id = str(review.get('id') or '')
+    if not review_id:
+        raise NavigationError('review_upload_failed', 'تعذر إنشاء مراجعة الشاشة داخل النظام')
+    log(f'Job paused for review: {state} | review={review_id}')
+    return review_id
+
+
+def _dismiss_review_screen(state: str):
+    win = find_asycuda_window()
+    if win:
+        focus_window(win)
+    if state == 'NOTIFICATIONS_POPUP':
+        pyautogui.press('esc')
+    elif state in ('DECLARATION_OPEN', 'PREDECLARATION_OPEN', 'NOTIFICATIONS_PAGE', 'OTHER_PAGE_OPEN'):
+        # Swing MDI: Ctrl+F4 closes the active internal frame without closing ASYCUDA itself.
+        pyautogui.hotkey('ctrl', 'f4')
+    else:
+        # Unknown dialogs are never confirmed automatically. Esc is the semantic Cancel action.
+        pyautogui.press('esc')
+    time.sleep(.8)
+
+
+def _wait_for_review_decision(job_id: str, review_id: str, state: str):
+    while True:
+        check_cancelled()
+        try:
+            response = requests.get(
+                api_url(f'/api/agent/jobs/{job_id}/control'),
+                headers=cloud_headers(), timeout=12
+            )
+            response.raise_for_status()
+            data = response.json()
+            if data.get('cancelRequested'):
+                raise NavigationError('cancelled_by_user', 'تم إيقاف الطلب بواسطة المستخدم')
+            review = data.get('review') or {}
+            if str(review.get('id') or '') != review_id:
+                time.sleep(1.0)
+                continue
+            decision = str(review.get('decision') or '')
+            if not decision:
+                time.sleep(1.0)
+                continue
+            if decision in ('stop', 'keep_and_stop'):
+                raise NavigationError('cancelled_by_user', 'تم إيقاف الطلب بواسطة المستخدم')
+            if decision == 'dismiss_and_resume':
+                _dismiss_review_screen(state)
+            elif decision != 'resume':
+                raise NavigationError('invalid_review_decision', 'قرار المراجعة غير مدعوم')
+            try:
+                requests.post(
+                    api_url(f'/api/agent/jobs/{job_id}/review-resolved'),
+                    headers=cloud_headers(), json={'reviewId': review_id}, timeout=12
+                ).raise_for_status()
+            except Exception:
+                pass
+            log(f'Review decision received: {decision} | state={state}')
+            return decision
+        except NavigationError:
+            raise
+        except Exception:
+            time.sleep(1.5)
+
+
+def ensure_unified_procedure_screen(job_id: str = ''):
     launch_asycuda()
-    deadline = time.monotonic() + 150
+    deadline = time.monotonic() + 600
     login_sent = False
     previous, repeats = None, 0
+    skip_review_once = None
+    review_states = {'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN', 'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP', 'MANUAL_INTERVENTION'}
     while time.monotonic() < deadline:
         check_cancelled()
         if _security_dialog():
             _click_security_warning_if_present(10)
         try:
+            current = HELPER.call('snapshot')
+            state = str(current.get('state') or 'LOADING')
+        except NavigationError as exc:
+            if exc.code not in ('jab_unavailable', 'helper_unavailable'):
+                raise
+            time.sleep(.5)
+            continue
+
+        if job_id and state in review_states and skip_review_once != state:
+            review_id = _send_review(job_id, state)
+            decision = _wait_for_review_decision(job_id, review_id, state)
+            if decision == 'resume':
+                skip_review_once = state
+            else:
+                skip_review_once = None
+            continue
+        if skip_review_once == state:
+            skip_review_once = None
+
+        try:
             result = HELPER.call('step')
             check_cancelled()
         except NavigationError as exc:
+            if exc.code in ('unknown_popup', 'manual_intervention_required') and job_id:
+                state = 'UNKNOWN_POPUP' if exc.code == 'unknown_popup' else 'MANUAL_INTERVENTION'
+                review_id = _send_review(job_id, state)
+                _wait_for_review_decision(job_id, review_id, state)
+                continue
             if exc.code not in ('jab_unavailable', 'helper_unavailable'):
                 raise
             time.sleep(.5)
@@ -452,24 +654,58 @@ def ensure_unified_procedure_screen():
         log('ASYCUDA state: ' + result['state'] + ' | planner=' + str(result.get('source','rule')))
         operation = result['operation']
         if operation == 'dismiss_notifications':
-            # This operation is emitted only for the exact known unread-mail prompt.
-            # Escape is the semantic Cancel action; no button coordinates or button-order guesses.
-            win = find_asycuda_window()
-            if win:
-                focus_window(win)
-            pyautogui.press('esc')
-            time.sleep(.6)
+            # In interactive-review mode this should normally have been intercepted above.
+            if job_id:
+                review_id = _send_review(job_id, 'NOTIFICATIONS_POPUP')
+                _wait_for_review_decision(job_id, review_id, 'NOTIFICATIONS_POPUP')
+            else:
+                _dismiss_review_screen('NOTIFICATIONS_POPUP')
             continue
-        if operation == 'ready': return 'READY'
+        if operation == 'ready':
+            log('Unified procedure screen detected and ready.')
+            return 'READY'
         if operation == 'login':
             if login_sent:
-                time.sleep(.5)
+                time.sleep(.6)
                 continue
             username, password = secret('asycuda_username'), secret('asycuda_password')
             if not username or not password:
                 raise NavigationError('manual_intervention_required', 'بيانات تسجيل دخول الأسيكودا غير متاحة محلياً')
             response = HELPER.call('step', credentials={'username': username, 'password': password})
-            login_sent = response['operation'] == 'login_sent'
+            if response.get('operation') != 'login_filled':
+                raise NavigationError('login_failed', 'تعذر تجهيز حقول تسجيل الدخول في الأسيكودا')
+            submitted = False
+            try:
+                submit = HELPER.call('submit_login')
+                if submit.get('operation') in ('login_submitted', 'login_already_left'):
+                    submitted = True
+                    log('ASYCUDA Login action sent through Java Access Bridge.')
+            except NavigationError as exc:
+                if exc.code not in ('login_submit_ambiguous', 'jab_unavailable', 'helper_unavailable'):
+                    raise
+                log('JAB Login button fallback unavailable; using default Enter action.')
+            if not submitted:
+                win = find_asycuda_window()
+                if win:
+                    focus_window(win)
+                pyautogui.press('enter')
+                log('ASYCUDA credentials filled; default Enter Login action sent.')
+            login_sent = True
+            login_deadline = time.monotonic() + 45
+            while time.monotonic() < login_deadline:
+                check_cancelled()
+                time.sleep(.7)
+                try:
+                    current = HELPER.call('snapshot')
+                    if current.get('state') != 'LOGIN':
+                        log('ASYCUDA login accepted; continuing navigation.')
+                        break
+                except NavigationError as exc:
+                    if exc.code not in ('jab_unavailable', 'helper_unavailable'):
+                        raise
+            else:
+                raise NavigationError('login_failed', 'بقيت شاشة تسجيل الدخول مفتوحة بعد إرسال بيانات الحساب. تحقق من اسم المستخدم وكلمة المرور.')
+            continue
         marker = (result['state'], operation, result.get('target'))
         repeats = repeats + 1 if marker == previous else 0
         previous = marker
@@ -478,9 +714,8 @@ def ensure_unified_procedure_screen():
         time.sleep(.5)
     raise NavigationError('navigation_timeout', 'تعذر الوصول إلى شاشة رقم الإجراء الموحد')
 
-
-def navigate_to_unified():
-    return ensure_unified_procedure_screen()
+def navigate_to_unified(job_id: str = ''):
+    return ensure_unified_procedure_screen(job_id)
 
 
 def create_unified_procedure(job):
@@ -537,9 +772,10 @@ def send_whatsapp(path: Path, to: str, serial: str, company_name: str, result_no
     return True
 
 
-def run_navigation_test():
+def run_navigation_test(job=None):
     check_cancelled()
-    ensure_unified_procedure_screen()
+    job_id = (job or {}).get('id') or ''
+    ensure_unified_procedure_screen(job_id)
     check_cancelled()
     if HELPER.call('snapshot')['state'] != 'UNIFIED_PROCEDURE_OPEN':
         raise NavigationError('navigation_changed', 'تغيرت شاشة الأسيكودا قبل التقاط الصورة')
@@ -553,13 +789,13 @@ def run_navigation_test():
 
 
 def run_test_job(job):
-    return run_navigation_test()
+    return run_navigation_test(job)
 
 
 def run_job(job):
     kind = job.get('kind')
     if kind in ('test', 'test_navigation'):
-        return run_navigation_test()
+        return run_navigation_test(job)
     if kind in ('execute', 'create_unified_procedure'):
         return create_unified_procedure(job)
     raise NavigationError('invalid_job_kind', 'نوع الطلب غير مدعوم')
@@ -592,6 +828,16 @@ def complete_job(job_id: str, ok: bool, result=None, error=''):
             'statusCode': result.get('statusCode', ''),
             'message': result.get('message', ''),
         })
+        shot_name = str(result.get('screenshotName', '') or '')
+        if result.get('screenshotTaken') and shot_name:
+            shot_path = SCREENSHOTS / shot_name
+            if shot_path.exists():
+                try:
+                    encoded, mime = _encode_review_screenshot(shot_path)
+                    payload['screenshotBase64'] = encoded
+                    payload['screenshotMime'] = mime
+                except Exception:
+                    pass
     r = requests.post(api_url('/api/agent/complete'), headers=cloud_headers(), json=payload, timeout=25)
     r.raise_for_status()
 

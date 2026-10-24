@@ -4,7 +4,7 @@ import type { Transaction } from '~/types'
 type CloudJob = {
   id:string
   kind?:'execute'|'test'|'test_navigation'
-  status:'pending'|'processing'|'cancelling'|'done'|'failed'|'cancelled'
+  status:'pending'|'processing'|'needs_review'|'cancelling'|'done'|'failed'|'cancelled'
   companyCode:string
   companyName?:string
   whatsappNumber:string
@@ -21,6 +21,7 @@ type CloudJob = {
   message?:string
   cancelRequested?:boolean
   attempts:number
+  review?:{ id:string; state:string; title:string; message:string; createdAt:string; screenshotMime?:string; screenshotAvailable?:boolean; decision?:string }
 }
 
 const { transactions, companies, currentStage, update, setStage } = useTransactions()
@@ -54,7 +55,7 @@ function showError(e:any){
   setTimeout(()=>errorMessage.value='', 4500)
 }
 function statusLabel(s:CloudJob['status']){
-  return { pending:'بانتظار الجهاز', processing:'جاري التنفيذ على الأسيكودا', cancelling:'جاري الإيقاف', done:'مكتمل', failed:'فشل', cancelled:'تم الإيقاف' }[s]
+  return { pending:'بانتظار الجهاز', processing:'جاري التنفيذ على الأسيكودا', needs_review:'بانتظار قرارك', cancelling:'جاري الإيقاف', done:'مكتمل', failed:'فشل', cancelled:'تم الإيقاف' }[s]
 }
 function jobError(job:CloudJob){
   if(job.statusCode === 'unknown_popup') return 'ظهرت نافذة غير معروفة داخل ASYCUDA'
@@ -267,7 +268,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
     <div class="section-title">
       <div><h3 style="margin:0">آخر الطلبات</h3><small class="muted">تتحدث تلقائياً كل عدة ثواني</small></div>
       <div class="right-actions">
-        <button class="btn mini danger" :disabled="loadingJobs || !jobs.some(j=>['pending','processing','cancelling'].includes(j.status))" @click="cancelAll">إيقاف الكل</button>
+        <button class="btn mini danger" :disabled="loadingJobs || !jobs.some(j=>['pending','processing','needs_review','cancelling'].includes(j.status))" @click="cancelAll">إيقاف الكل</button>
         <button class="btn mini ghost" :disabled="loadingJobs || !jobs.length" @click="clearAll">حذف الطلبات</button>
         <button class="btn mini ghost" :disabled="loadingJobs" @click="refreshAll">تحديث</button>
       </div>
@@ -304,11 +305,13 @@ watch([mobilePin, whatsappNumber], savePrefs)
           <template v-else-if="job.status==='failed'">
             <small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b>
           </template>
+          <template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>{{job.review?.message || 'افتح تفاصيل الطلب لمشاهدة الصورة واتخاذ القرار.'}}</span></template>
           <template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template>
           <template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template>
         </div>
         <div class="cloud-job-actions">
-          <button v-if="job.status==='pending' || job.status==='processing' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button>
+          <NuxtLink class="btn primary" :to="`/unified-procedure/${job.id}`">فتح التفاصيل</NuxtLink>
+          <button v-if="job.status==='pending' || job.status==='processing' || job.status==='needs_review' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button>
           <button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button>
           <button class="btn ghost" @click="deleteJob(job)">حذف</button>
         </div>

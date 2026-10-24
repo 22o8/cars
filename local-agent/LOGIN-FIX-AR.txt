@@ -1,0 +1,19 @@
+ASYCUDA Agent v8.6 - Smart Login Fix
+
+المشكلة التي تم حلها:
+- شاشة دخول ASYCUDA تحتوي زر دخول على شكل علامة صح بدون Accessible Name.
+- النسخ السابقة كانت تشترط زر باسم Login/دخول، لذلك كانت تتوقف عند شاشة الدخول.
+
+السلوك الجديد:
+1. Java Access Bridge يتأكد أن شاشة LOGIN موجودة.
+2. يحدد حقل اسم المستخدم وحقل كلمة المرور الحقيقيين فقط.
+3. يملأهما من Windows Credential Manager.
+4. لا يخمن أي زر غير مسمى.
+5. يرسل Enter باعتباره Default Action لشاشة Login.
+6. ينتظر حتى تختفي حالة LOGIN قبل متابعة التنقل.
+7. إذا بقيت شاشة Login لمدة 45 ثانية، يوقف الطلب برسالة login_failed واضحة.
+
+التحديث من v8.5:
+- لا تحتاج Vercel Redeploy.
+- لا تحذف config.json أو .venv أو .venv32.
+- انسخ ملفات هذا المجلد فوق C:\asycuda-office-1 ثم شغل update-agent.bat ثم restart-agent.bat.

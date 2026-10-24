@@ -1,6 +1,6 @@
 import { getJson, redisCommand, setJson } from '../../utils/redis'
 import { requireAgent } from '../../utils/security'
-import { jobKey, recentKey, type UnifiedCloudJob } from '../../utils/unified'
+import { finalScreenshotKey, jobKey, recentKey, type UnifiedCloudJob } from '../../utils/unified'
 
 export default defineEventHandler(async (event) => {
   const deviceId = requireAgent(event)
@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   if (!job) return { ok: true, deleted: true }
   if (job.deviceId !== deviceId) throw createError({ statusCode: 403, statusMessage: 'wrong device' })
   if (job.status === 'done' || job.status === 'failed' || job.status === 'cancelled') return { ok: true, job }
-  if (!['processing', 'cancelling'].includes(job.status)) throw createError({ statusCode: 409, statusMessage: 'job is not processing' })
+  if (!['processing', 'needs_review', 'cancelling'].includes(job.status)) throw createError({ statusCode: 409, statusMessage: 'job is not processing' })
 
   const statusCode = String(body?.statusCode || '').slice(0, 80)
   const cancelled = statusCode === 'cancelled_by_user' || job.cancelRequested === true
@@ -28,6 +28,13 @@ export default defineEventHandler(async (event) => {
   job.whatsappSent = cancelled ? false : !!body?.whatsappSent
   job.screenshotTaken = !!body?.screenshotTaken
   job.screenshotName = String(body?.screenshotName || '').trim()
+  const shotData = String(body?.screenshotBase64 || '')
+  const shotMime = String(body?.screenshotMime || 'image/jpeg')
+  if (shotData && shotData.length <= 4_000_000 && /^image\/(jpeg|png|webp)$/i.test(shotMime)) {
+    await redisCommand(event, ['SET', finalScreenshotKey(id), shotData, 'EX', 604800])
+    job.screenshotMime = shotMime
+    job.screenshotAvailable = true
+  }
   job.error = cancelled ? '' : (body?.ok ? '' : String(body?.error || 'فشل التنفيذ على جهاز الأسيكودا'))
 
   if (job.deleteAfterCancel) {

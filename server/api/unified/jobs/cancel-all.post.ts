@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   let stopped = 0
   for (const id of ids) {
     const job = await getJson<UnifiedCloudJob>(event, jobKey(id))
-    if (!job || !['pending', 'processing', 'cancelling'].includes(job.status)) continue
+    if (!job || !['pending', 'processing', 'needs_review', 'cancelling'].includes(job.status)) continue
     job.status = 'cancelled'
     job.cancelRequested = true
     job.cancelRequestedAt = new Date().toISOString()

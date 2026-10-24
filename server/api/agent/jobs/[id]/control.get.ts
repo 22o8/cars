@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
     ok: true,
     cancelRequested: !!job.cancelRequested || job.status === 'cancelling' || job.status === 'cancelled',
     deleteAfterCancel: !!job.deleteAfterCancel,
-    status: job.status
+    status: job.status,
+    review: job.review ? { id: job.review.id, state: job.review.state, decision: job.review.decision || '', decisionAt: job.review.decisionAt || '' } : null
   }
 })

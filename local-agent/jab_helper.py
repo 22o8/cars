@@ -7,7 +7,7 @@ import os
 import struct
 import sys
 from pathlib import Path
-from navigation import NavigationError, detect_state
+from navigation import NavigationError, detect_state, subtree, visible
 from intelligent_planner import IntelligentPlanner
 def find_bridge_dll() -> str:
     candidates = []
@@ -100,8 +100,44 @@ class Session:
 
     def request(self, request):
         snapshot = self.snapshot()
+        state_info = detect_state(snapshot)
         if request['command'] == 'snapshot':
-            return {'snapshot': snapshot, **detect_state(snapshot)}
+            return {'snapshot': snapshot, **state_info}
+        if request['command'] == 'submit_login':
+            # This ASYCUDA Java 8 build exposes the login/cancel controls as two
+            # unnamed icon-only Swing buttons. Identify the login control only
+            # after positively identifying the LOGIN screen and the two editable
+            # credential fields. No desktop coordinates are used.
+            if state_info.get('state') != 'LOGIN':
+                return {'operation': 'login_already_left'}
+            nodes = snapshot['nodes']
+            scope = nodes
+            popup_id = state_info.get('popup')
+            if popup_id is not None:
+                root = next((n for n in nodes if n.get('id') == str(popup_id)), None)
+                if root:
+                    scope = subtree(nodes, root)
+            passwords = [n for n in scope if n.get('role') in ('password text', 'password') and visible(n) and 'enabled' in n.get('states', [])]
+            users = [n for n in scope if n.get('role') in ('text', 'editable text') and visible(n) and 'enabled' in n.get('states', []) and 'editable' in n.get('states', [])]
+            buttons = [n for n in scope if n.get('role') == 'push button' and visible(n) and 'enabled' in n.get('states', []) and n.get('action') and not str(n.get('name','')).strip()]
+            if len(passwords) != 1 or len(users) != 1 or len(buttons) != 2:
+                raise NavigationError('login_submit_ambiguous', f'تعذر تحديد زر الدخول بأمان (username={len(users)}, password={len(passwords)}, buttons={len(buttons)})')
+            def box(n):
+                b=n.get('bounds') or {}
+                return (int(b.get('x',0) or 0), int(b.get('y',0) or 0), int(b.get('width',0) or 0), int(b.get('height',0) or 0))
+            ordered=sorted(buttons, key=lambda n: (box(n)[0], box(n)[1]))
+            left, right = ordered[0], ordered[1]
+            lx,ly,lw,lh=box(left); rx,ry,rw,rh=box(right)
+            # In the observed Iraqi ASYCUDA login dialog the green check button
+            # is immediately to the left of the cancel-X button. Require the pair
+            # to be horizontally aligned and similarly sized before using this
+            # structural rule. If the UI ever changes, fail closed instead.
+            aligned = abs(ly-ry) <= max(8, max(lh,rh)//2) and abs(lh-rh) <= max(8, max(lh,rh)//2)
+            adjacent = rx >= lx and (rx - (lx+lw)) <= max(80, 4*max(lw,rw,1))
+            if not aligned or not adjacent:
+                raise NavigationError('login_submit_ambiguous', 'تغير ترتيب أزرار تسجيل الدخول في ASYCUDA ويحتاج إلى فحص')
+            self.elements[left['id']].click(simulate=False)
+            return {'operation': 'login_submitted', 'method': 'jab_structural_button'}
         if request['command'] != 'step':
             raise NavigationError('invalid_command', 'Unsupported helper command')
         action = self.planner.decide(snapshot)
@@ -111,17 +147,34 @@ class Session:
             if operation == 'expand': element.expand(simulate=False)
             else: element.click(simulate=False)
         elif operation == 'login' and request.get('credentials'):
+            # The Iraqi Java 8 login window exposes the username/password fields
+            # through JAB, but the green checkmark login button is icon-only and
+            # has no accessible name. Do not guess an unnamed button by index.
+            # Fill the two real editable fields here; the 64-bit coordinator then
+            # sends Enter, which activates Swing's default login action.
             nodes = snapshot['nodes']
-            passwords = [n for n in nodes if n['role'] == 'password text' and 'showing' in n['states']]
-            users = [n for n in nodes if n['role'] == 'text' and 'showing' in n['states'] and 'editable' in n['states']]
-            buttons = [n for n in nodes if n['role'] == 'push button' and n['name'].strip().casefold() in ('login', 'log in', 'تسجيل الدخول', 'دخول') and 'showing' in n['states']]
-            if len(passwords) != 1 or len(users) != 1 or len(buttons) != 1:
-                raise NavigationError('manual_intervention_required', 'تعذر تحديد حقول تسجيل الدخول بأمان')
+            passwords = [
+                n for n in nodes
+                if n['role'] in ('password text', 'password')
+                and 'showing' in n['states']
+                and 'enabled' in n['states']
+            ]
+            users = [
+                n for n in nodes
+                if n['role'] in ('text', 'editable text')
+                and 'showing' in n['states']
+                and 'enabled' in n['states']
+                and 'editable' in n['states']
+            ]
+            if len(passwords) != 1 or len(users) != 1:
+                raise NavigationError(
+                    'manual_intervention_required',
+                    f'تعذر تحديد حقول تسجيل الدخول بأمان (username={len(users)}, password={len(passwords)})'
+                )
             creds = request['credentials']
             self.elements[users[0]['id']].send_text(creds['username'], wait_for_text_update=False)
             self.elements[passwords[0]['id']].send_text(creds['password'], wait_for_text_update=False)
-            self.elements[buttons[0]['id']].click(simulate=False)
-            action['operation'] = 'login_sent'
+            action['operation'] = 'login_filled'
         return action
 
     def close(self):

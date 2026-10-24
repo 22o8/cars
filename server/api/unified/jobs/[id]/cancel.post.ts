@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   const job = await getJson<UnifiedCloudJob>(event, jobKey(id))
   if (!job) throw createError({ statusCode: 404, statusMessage: 'الطلب غير موجود.' })
 
-  if (['pending', 'processing', 'cancelling'].includes(job.status)) {
+  if (['pending', 'processing', 'needs_review', 'cancelling'].includes(job.status)) {
     job.status = 'cancelled'
     job.cancelRequested = true
     job.cancelRequestedAt = new Date().toISOString()

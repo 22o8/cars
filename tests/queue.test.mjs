@@ -38,6 +38,8 @@ const del=await load('unified/jobs/[id]/delete.delete.ts')
 const cancelAll=await load('unified/jobs/cancel-all.post.ts')
 const clearAll=await load('unified/jobs/clear.delete.ts')
 const control=await load('agent/jobs/[id]/control.get.ts')
+const review=await load('agent/jobs/[id]/review.post.ts')
+const reviewDecision=await load('unified/jobs/[id]/review-decision.post.ts')
 const mobile=()=>({headers:{'x-tarabil-mobile-pin':config.mobilePin}})
 const agent=body=>({headers:{authorization:'Bearer '+config.agentDeviceToken,'x-tarabil-device-id':config.agentDeviceId},body})
 beforeEach(()=>store.clear())
@@ -63,8 +65,8 @@ test('heartbeat keeps device online and API is not cached',async()=>{
  await heartbeat(agent({state:'ONLINE'}));const event=mobile();const result=await status(event)
  assert.equal(result.state,'ONLINE');assert.match(event.responseHeaders['Cache-Control'],/no-store/)
 })
-test('agent error is not mislabeled offline',async()=>{
- await heartbeat(agent({state:'AGENT_ERROR'}));assert.equal((await status(mobile())).state,'AGENT_ERROR')
+test('job errors do not mark the device offline',async()=>{
+ await heartbeat(agent({state:'AGENT_ERROR'}));assert.equal((await status(mobile())).state,'ONLINE')
 })
 test('completed test cannot be retried',async()=>{
  const {job}=await testJob(mobile());job.status='done';store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
@@ -98,4 +100,25 @@ test('cancel all stops queued jobs and clear all removes history',async()=>{
  assert.equal(JSON.parse(store.get('tarabil:unified:job:'+a.id)).status,'cancelled')
  const cleared=await clearAll(mobile());assert.equal(cleared.deleted,2)
  assert.equal(store.get('tarabil:unified:recent').length,0)
+})
+
+test('unexpected ASYCUDA screen pauses job for interactive review',async()=>{
+ const {job}=await testJob(mobile());job.status='processing';store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+ const res=await review({...agent({state:'PREDECLARATION_OPEN',title:'يوجد بيان مسبق مفتوح',message:'راجع الصورة',screenshotMime:'image/jpeg',screenshotBase64:'YWJj'}),params:{id:job.id}})
+ assert.equal(res.review.state,'PREDECLARATION_OPEN')
+ const saved=JSON.parse(store.get('tarabil:unified:job:'+job.id));assert.equal(saved.status,'needs_review');assert.equal(saved.review.screenshotAvailable,true)
+ const ctl=await control({...agent(),params:{id:job.id}});assert.equal(ctl.status,'needs_review');assert.equal(ctl.review.id,res.review.id)
+})
+test('review decision resumes the same running job',async()=>{
+ const {job}=await testJob(mobile());job.status='processing';store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+ const paused=await review({...agent({state:'NOTIFICATIONS_POPUP',title:'اشعارات',message:'review',screenshotMime:'image/jpeg',screenshotBase64:'YWJj'}),params:{id:job.id}})
+ const decided=await reviewDecision({...mobile(),params:{id:job.id},body:{action:'dismiss_and_resume'}})
+ assert.equal(decided.job.status,'processing');assert.equal(decided.job.review.decision,'dismiss_and_resume')
+ const ctl=await control({...agent(),params:{id:job.id}});assert.equal(ctl.review.decision,'dismiss_and_resume');assert.equal(ctl.cancelRequested,false)
+})
+test('keep-and-stop decision cancels the job',async()=>{
+ const {job}=await testJob(mobile());job.status='processing';store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+ await review({...agent({state:'DECLARATION_OPEN',title:'بيان',message:'review',screenshotMime:'image/jpeg',screenshotBase64:'YWJj'}),params:{id:job.id}})
+ const decided=await reviewDecision({...mobile(),params:{id:job.id},body:{action:'keep_and_stop'}})
+ assert.equal(decided.job.status,'cancelled');assert.equal(decided.job.cancelRequested,true)
 })

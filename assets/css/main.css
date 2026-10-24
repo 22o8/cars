@@ -28,3 +28,5 @@
 @media(max-width:760px){.unified-head{align-items:stretch}.unified-head .agent-state{justify-content:center}.mobile-form-grid{grid-template-columns:1fr}.optional-company{display:none}.big-mobile-action{font-size:15px;padding:13px}.quick-tx-row{grid-template-columns:1fr}.quick-tx-row .btn{width:100%}.cloud-job-row{grid-template-columns:1fr}.cloud-job-state{justify-self:start}.cloud-job-row>.btn{grid-column:1}.pin-field input{letter-spacing:3px}}
 .cloud-cancelling{background:#fff2d9;color:#8d6200}.cloud-cancelled{background:#eef2f3;color:#65757a}.cloud-job-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.cloud-job-actions .btn{white-space:nowrap}.btn.mini{padding:7px 10px;font-size:12px}
 @media(max-width:760px){.cloud-job-actions{justify-content:stretch}.cloud-job-actions .btn{flex:1}.cloud-jobs-card .section-title{align-items:flex-start;flex-direction:column}.cloud-jobs-card .right-actions{width:100%}.cloud-jobs-card .right-actions .btn{flex:1}}
+
+.cloud-needs_review{background:#fff0cc;color:#8a5b00;border:1px solid #f2d37b}

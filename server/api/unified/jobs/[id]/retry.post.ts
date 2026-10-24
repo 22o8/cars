@@ -1,6 +1,6 @@
 import { getJson, redisCommand, setJson } from '../../../../utils/redis'
 import { requireMobilePin } from '../../../../utils/security'
-import { jobKey, queueKey, type UnifiedCloudJob } from '../../../../utils/unified'
+import { finalScreenshotKey, jobKey, queueKey, type UnifiedCloudJob } from '../../../../utils/unified'
 
 export default defineEventHandler(async (event) => {
   requireMobilePin(event)
@@ -15,10 +15,17 @@ export default defineEventHandler(async (event) => {
   job.message = undefined
   job.screenshotTaken = false
   job.screenshotName = ''
+  job.screenshotAvailable = false
+  job.screenshotMime = undefined
+  await redisCommand(event, ['DEL', finalScreenshotKey(id)])
   job.startedAt = undefined
   job.finishedAt = undefined
   job.unifiedProcedureNo = ''
   job.whatsappSent = false
+  if (job.review) job.reviewHistory = [...(job.reviewHistory || []), job.review].slice(-12)
+  job.review = undefined
+  job.cancelRequested = false
+  job.cancelRequestedAt = undefined
   await setJson(event, jobKey(id), job)
   await redisCommand(event, ['LPUSH', queueKey(job.deviceId), id])
   return { ok: true, job }

@@ -59,3 +59,18 @@ Legacy calibration files are archived under `legacy-calibration`; they are not i
 
 ## v8.3 job controls
 The agent polls `/api/agent/jobs/:id/control` while a job is active. A cancelled or deleted cloud job raises `cancelled_by_user` locally, returns the agent to ONLINE, and prevents the stopped job from being treated as a failure. The Java launcher also has a trusted relative-dialog fallback for the verified `asy.mof.gov.iq` Security Warning when Java 8 exposes no usable checkbox control.
+
+## v8.5 launch-trust fix
+Old Oracle Java 8 can display `Location: https://asy.mof.gov.iq` visually while not exposing that label to UI Automation. The agent now validates the exact local `AWIQWorld.jnlp` before launch and requires HTTPS host `asy.mof.gov.iq`. If no Security Warning was already open before launch, the warning created by that verified launch may be accepted even when the Location label is not readable by UIA. This does not weaken unknown-popup handling inside ASYCUDA.
+
+
+## v8.7 login + unified navigation
+
+- Smart login now prefers the real unnamed checkmark button through Java Access Bridge.
+- It uses a strict structural rule only on a verified LOGIN screen; Enter remains a fallback.
+- After login, the existing JAB state machine automatically expands `الإجراء الموحد`, opens `رقم الإجراء الموحد`, and verifies the target internal frame before reporting success.
+- To change only the stored ASYCUDA username/password, run `change-asycuda-account.bat`, then `restart-agent.bat`. A full reinstall is not required.
+
+
+## v8.8 Interactive Review
+راجع `INTERACTIVE-REVIEW-AR.md`.

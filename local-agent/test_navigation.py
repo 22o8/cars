@@ -93,6 +93,20 @@ class PolicyTests(unittest.TestCase):
 
 
 
+class InteractiveReviewStateTests(unittest.TestCase):
+    def test_predeclaration_is_detected_for_review(self):
+        s=snap(node(1,'internal frame','البيان المسبق',states=['showing','selected']))
+        self.assertEqual(detect_state(s)['state'],'PREDECLARATION_OPEN')
+
+    def test_other_internal_page_is_not_mislabeled_main(self):
+        s=snap(node(1,'internal frame','صفحة غير معروفة',states=['showing','selected']))
+        self.assertEqual(detect_state(s)['state'],'OTHER_PAGE_OPEN')
+
+    def test_notification_page_is_detected(self):
+        s=snap(node(1,'internal frame','صندوق البريد',states=['showing','selected']))
+        self.assertEqual(detect_state(s)['state'],'NOTIFICATIONS_PAGE')
+
+
 class NotificationPopupTests(unittest.TestCase):
     def test_known_unread_mail_popup_uses_semantic_cancel(self):
         snapshot = {
@@ -106,5 +120,32 @@ class NotificationPopupTests(unittest.TestCase):
         }
         action = plan(snapshot)
         self.assertEqual(action['operation'], 'dismiss_notifications')
+
+class SmartLoginRegressionTests(unittest.TestCase):
+    def test_helper_does_not_require_named_login_button(self):
+        text = Path(__file__).with_name('jab_helper.py').read_text(encoding='utf-8-sig')
+        self.assertIn("action['operation'] = 'login_filled'", text)
+        self.assertNotIn("buttons[0]['id']", text)
+
+    def test_agent_prefers_jab_login_button_and_verifies_login_exit(self):
+        text = Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn("HELPER.call('submit_login')", text)
+        self.assertIn("pyautogui.press('enter')", text)
+        self.assertIn("current.get('state') != 'LOGIN'", text)
+        self.assertIn("'login_failed'", text)
+
+    def test_helper_login_submit_is_login_scoped_and_fail_closed(self):
+        text = Path(__file__).with_name('jab_helper.py').read_text(encoding='utf-8-sig')
+        self.assertIn("request['command'] == 'submit_login'", text)
+        self.assertIn("state_info.get('state') != 'LOGIN'", text)
+        self.assertIn("len(buttons) != 2", text)
+        self.assertIn("login_submit_ambiguous", text)
+
+    def test_change_account_tool_uses_keyring_only(self):
+        text = Path(__file__).with_name('change_asycuda_account.py').read_text(encoding='utf-8-sig')
+        self.assertIn("keyring.set_password(SERVICE, 'asycuda_username'", text)
+        self.assertIn("keyring.set_password(SERVICE, 'asycuda_password'", text)
+        self.assertNotIn('config.json', text)
+
 
 if __name__=='__main__': unittest.main()
