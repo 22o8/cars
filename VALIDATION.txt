@@ -1,0 +1,21 @@
+ASYCUDA Pro v8 Hybrid Intelligent Candidate - Validation
+========================================================
+
+Completed in packaging environment:
+- Python compileall: PASS
+- Navigation/intelligence unit tests: 16/16 PASS
+- Static safety check: real unified-procedure creation remains disabled
+- Static safety check: no coordinate-based navigation usage outside legacy/config archive
+- Source secret scan: no Vercel/Redis/WhatsApp/ASYCUDA secret values found in source
+
+Not re-run in packaging environment:
+- npm ci / Nuxt typecheck / Nuxt build, because npm dependencies were not cached and this environment has no package-registry network access.
+- Live Windows Java Access Bridge E2E, because ASYCUDA is only available on the authorized workstation.
+
+Required live acceptance before production use:
+1. Run local-agent\\update-agent.bat on the workstation.
+2. Run local-agent\\diagnostics.bat.
+3. Use the website TEST button only.
+4. If an unknown popup is encountered, use local-agent\\teach-screen.bat to teach only the SAFE navigation/dismiss control.
+5. Confirm TEST_SUCCESS and screenshot creation from multiple initial ASYCUDA screens.
+6. Keep real creation disabled until explicit authorization and verified selectors are implemented.

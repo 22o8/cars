@@ -26,6 +26,16 @@ def run():
   report['java_version']=r.stderr.splitlines()[0] if r.stderr else 'unavailable'
  except Exception: report['java_version']='unavailable'
  report['asycuda_window_detected']=bool(agent.find_asycuda_window())
+
+ try:
+  memory_path=BASE/'screen-memory.json'
+  if memory_path.exists():
+   memory=json.loads(memory_path.read_text(encoding='utf-8'))
+   report['intelligence']={'memory_screens':len(memory.get('screens',{})),'teachings':len(memory.get('teachings',{})),'transitions':len(memory.get('transitions',[]))}
+  else:
+   report['intelligence']={'memory_screens':0,'teachings':0,'transitions':0}
+ except Exception:
+  report['intelligence']='unavailable'
  report['credentials_present']={}
  for n in ('agent_device_token','asycuda_username','asycuda_password'):
   try: report['credentials_present'][n]=bool(agent.secret(n))

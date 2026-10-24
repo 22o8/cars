@@ -22,7 +22,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '4.0.0-jab32-safe-navigation'
+VERSION = '5.0.0-hybrid-intelligent'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 
@@ -193,7 +193,7 @@ def ensure_unified_procedure_screen():
                 raise
             time.sleep(.5)
             continue
-        log('ASYCUDA state: ' + result['state'])
+        log('ASYCUDA state: ' + result['state'] + ' | planner=' + str(result.get('source','rule')))
         operation = result['operation']
         if operation == 'ready': return 'READY'
         if operation == 'login':
@@ -333,7 +333,7 @@ def heartbeat(stop):
     while not stop.is_set():
         try:
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code

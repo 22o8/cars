@@ -5,7 +5,9 @@ import contextlib
 import json
 import struct
 import sys
-from navigation import NavigationError, plan, detect_state
+from pathlib import Path
+from navigation import NavigationError, detect_state
+from intelligent_planner import IntelligentPlanner
 DLL = r'C:\Program Files (x86)\Java\jre1.8.0_202\bin\WindowsAccessBridge-32.dll'
 
 class Session:
@@ -14,6 +16,7 @@ class Session:
             raise RuntimeError('JAB helper requires Python 32-bit')
         self.drivers, self.elements = {}, {}
         self.owned = set()
+        self.planner = IntelligentPlanner(Path(__file__).resolve().parent)
 
     def release_elements(self):
         for key in self.owned:
@@ -56,9 +59,23 @@ class Session:
             self.elements[key] = el
             if owned: self.owned.add(key)
             role = el.role_en_us
+            try:
+                bounds = dict(el.bounds or {})
+            except Exception:
+                bounds = {}
+            try:
+                index_in_parent = int(el.index_in_parent)
+            except Exception:
+                index_in_parent = -1
+            try:
+                description = str(el.description or '')
+            except Exception:
+                description = ''
             nodes.append({'id': key, 'parent': parent, 'role': role,
                           'name': '' if role in ('text', 'password text') else el.name,
-                          'states': list(el.states_en_us), 'action': bool(el.accessible_action)})
+                          'description': '' if role in ('text', 'password text') else description,
+                          'states': list(el.states_en_us), 'action': bool(el.accessible_action),
+                          'index_in_parent': index_in_parent, 'bounds': bounds})
             for child in el.get_children(): visit(child, key, depth + 1)
         for h in handles:
             if h not in self.drivers: self.drivers[h] = JABDriver(hwnd=h, bridge_dll=DLL, timeout=8)
@@ -72,7 +89,7 @@ class Session:
             return {'snapshot': snapshot, **detect_state(snapshot)}
         if request['command'] != 'step':
             raise NavigationError('invalid_command', 'Unsupported helper command')
-        action = plan(snapshot)
+        action = self.planner.decide(snapshot)
         operation = action['operation']
         if operation in ('click', 'expand'):
             element = self.elements[action['target']]

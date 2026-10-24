@@ -1,6 +1,12 @@
-# Tarabil ASYCUDA Agent 4.0 — safe navigation candidate
+# Tarabil ASYCUDA Agent 5.0 — hybrid intelligent navigation candidate
 
 This is a tested code candidate, NOT a certified production release. Live JAB navigation and restart/phone acceptance remain unverified.
+
+
+## v8 hybrid intelligence
+The v8 layer adds local screen fingerprints, conservative learned-screen retrieval and an ActionGuard. Deterministic JAB rules remain first priority. A user can teach a previously unknown safe navigation/popup dismissal once with `teach-screen.bat`; the helper reloads the memory automatically. Dynamic numbers are normalized so repeated versions of the same screen can match. No passwords or editable text values are stored in the screen memory.
+
+The optional `local_ai.py` interface is disabled by default. No ASYCUDA screen data is sent to an external model. Real creation remains disabled.
 
 ## Architecture
 The existing 64-bit agent polls the same Vercel/Upstash queue. It uses a persistent 32-bit `.venv32\Scripts\python.exe jab_helper.py` process via inherited JSON stdin/stdout pipes. No helper network port exists. `navigation.py` is the pure state/action policy. The helper uses PyJAB 1.12.0 directly, never its inspector CLI and never `JABDriver.__exit__` (which kills Java).
@@ -32,7 +38,7 @@ Test jobs accept legacy `test` and new `test_navigation`. Missing/unknown kinds 
 
 ## Tests
 `.venv\Scripts\python.exe -X utf8 -m unittest -v test_navigation`
-13 safety tests cover popup scoping, unsaved data, readiness, ambiguous controls, unknown jobs and disabled production.
+16 safety tests cover popup scoping, unsaved data, readiness, learned-screen retrieval, dynamic fingerprints, dangerous taught controls, ambiguous controls, unknown jobs and disabled production.
 Website: `npm ci`, `npm test`, `npm run typecheck`, `npm run build`.
 The 7 website contract tests use mocked Redis HTTP responses; they do not prove real Upstash Lua behavior or desktop E2E.
 

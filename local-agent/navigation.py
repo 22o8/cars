@@ -70,7 +70,7 @@ def plan(snapshot):
         return {'state': state, 'operation': 'login'}
     if state == 'NOTIFICATIONS_POPUP':
         popup = next(n for n in nodes if n['id'] == info['popup'])
-        matches = [n for n in subtree(nodes, popup) if visible(n) and n['role'] == 'push button' and norm(n['name']) in NO and 'enabled' in n['states']]
+        matches = [n for n in subtree(nodes, popup) if visible(n) and n['role'] == 'push button' and (norm(n.get('name','')) in NO or norm(n.get('description','')) in NO) and 'enabled' in n['states']]
         if len(matches) != 1:
             raise NavigationError('manual_intervention_required', 'تعذر تحديد زر رفض فتح البريد بأمان')
         return {'state': state, 'operation': 'click', 'target': matches[0]['id']}

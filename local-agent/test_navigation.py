@@ -1,7 +1,10 @@
 import ast
 from pathlib import Path
+import tempfile
 import unittest
 from navigation import plan, detect_state, NavigationError
+from intelligent_planner import IntelligentPlanner
+from screen_memory import ScreenMemory
 
 def node(id, role, name='', parent=None, states=None, action=False):
  return dict(id=str(id),role=role,name=name,parent=None if parent is None else str(parent),states=states or ['showing','enabled'],action=action)
@@ -41,12 +44,51 @@ class PolicyTests(unittest.TestCase):
   function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run_navigation_test')
   calls={n.func.id for n in ast.walk(function) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)}
   self.assertEqual(calls,{'ensure_unified_procedure_screen','take_screenshot','NavigationError'})
+ def _isolated_job_functions(self):
+  tree=ast.parse(Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig'))
+  wanted=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('create_unified_procedure','run_job')]
+  module=ast.Module(body=wanted,type_ignores=[])
+  ast.fix_missing_locations(module)
+  ns={'NavigationError':NavigationError,'run_navigation_test':lambda:{'ok':True}}
+  exec(compile(module,'agent.py','exec'),ns)
+  return ns
  def test_unknown_job_never_infers_execute(self):
-  import agent
-  with self.assertRaises(NavigationError) as e: agent.run_job({'companyCode':'12345678'})
+  ns=self._isolated_job_functions()
+  with self.assertRaises(NavigationError) as e: ns['run_job']({'companyCode':'12345678'})
   self.assertEqual(e.exception.code,'invalid_job_kind')
  def test_production_disabled(self):
-  import agent
-  with self.assertRaises(NavigationError): agent.run_job({'kind':'execute','companyCode':'12345678'})
+  ns=self._isolated_job_functions()
+  with self.assertRaises(NavigationError): ns['run_job']({'kind':'execute','companyCode':'12345678'})
+
+ def test_screen_memory_normalizes_dynamic_numbers(self):
+  with tempfile.TemporaryDirectory() as td:
+   m=ScreenMemory(Path(td))
+   a=snap(node(1,'alert'),node(2,'label','لديك 13 رسالة غير مقروءة. هل تريد فتح صندوق البريد?',1))
+   b=snap(node(1,'alert'),node(2,'label','لديك 99 رسالة غير مقروءة. هل تريد فتح صندوق البريد?',1))
+   self.assertEqual(m.signature(a)['fingerprint'],m.signature(b)['fingerprint'])
+
+ def test_taught_unnamed_popup_action_is_retrieved_safely(self):
+  with tempfile.TemporaryDirectory() as td:
+   planner=IntelligentPlanner(Path(td))
+   s=snap(
+    node(1,'alert'),
+    node(2,'label','لديك 13 رسالة غير مقروءة. هل تريد فتح صندوق البريد?',1),
+    dict(node(3,'push button','',1,action=True),index_in_parent=0),
+    dict(node(4,'push button','',1,action=True),index_in_parent=1),
+   )
+   planner.teach(s,'NOTIFICATIONS_POPUP','click',{'role':'push button','name':'','index_in_parent':1,'parent_text':'هل تريد فتح صندوق البريد'},'dismiss unread-mail prompt')
+   action=planner.decide(s)
+   self.assertEqual(action['operation'],'click')
+   self.assertEqual(action['target'],'4')
+   self.assertEqual(action['source'],'memory')
+
+ def test_taught_dangerous_button_is_rejected(self):
+  with tempfile.TemporaryDirectory() as td:
+   planner=IntelligentPlanner(Path(td))
+   s=snap(node(1,'alert','Unknown'),dict(node(2,'push button','Save',1,action=True),index_in_parent=0))
+   planner.teach(s,'UNKNOWN_POPUP','click',{'role':'push button','name':'Save','index_in_parent':0,'parent_text':'Unknown'},'bad teaching')
+   with self.assertRaises(NavigationError) as e:
+    planner.decide(s)
+   self.assertIn(e.exception.code,('manual_intervention_required','unsafe_action'))
 
 if __name__=='__main__': unittest.main()

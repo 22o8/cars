@@ -64,5 +64,12 @@
     "enabled": false,
     "graph_version": "",
     "caption": "رقم الإجراء الموحد: {procedureNo} - {serial} - {companyName}"
+  },
+  "intelligence": {
+    "mode": "hybrid-local",
+    "screen_memory": true,
+    "teaching_enabled": true,
+    "external_ai_enabled": false,
+    "note": "Accessibility metadata stays local. External AI is disabled by default."
   }
 }
