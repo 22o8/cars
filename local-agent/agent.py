@@ -22,7 +22,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '5.0.0-hybrid-intelligent'
+VERSION = '5.1.0-hybrid-resilient'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 
@@ -122,8 +122,16 @@ def _click_security_warning_if_present(timeout=40):
         dlg = _security_dialog()
         if dlg:
             text = ' '.join(x.window_text() for x in dlg.descendants()).casefold()
-            if 'asycuda' not in text and 'awiqworld' not in text:
-                raise NavigationError('manual_intervention_required', 'تعذر التأكد أن تحذير Java يخص الأسيكودا')
+            # The Iraqi ASYCUDA Java warning does not necessarily contain the product name.
+            # Trust it only when the official Ministry of Finance ASYCUDA host is visible.
+            trusted_warning = (
+                'asy.mof.gov.iq' in text
+                or 'https://asy.mof.gov.iq' in text
+                or 'asycuda' in text
+                or 'awiqworld' in text
+            )
+            if not trusted_warning:
+                raise NavigationError('manual_intervention_required', 'Java Security Warning is not recognized as the official ASYCUDA launcher')
             # Require the exact risk checkbox and Run control. No positional fallback.
             boxes = [x for x in dlg.descendants() if
                      'i accept the risk and want to run this application' in x.window_text().lower()]
@@ -195,6 +203,15 @@ def ensure_unified_procedure_screen():
             continue
         log('ASYCUDA state: ' + result['state'] + ' | planner=' + str(result.get('source','rule')))
         operation = result['operation']
+        if operation == 'dismiss_notifications':
+            # This operation is emitted only for the exact known unread-mail prompt.
+            # Escape is the semantic Cancel action; no button coordinates or button-order guesses.
+            win = find_asycuda_window()
+            if win:
+                focus_window(win)
+            pyautogui.press('esc')
+            time.sleep(.6)
+            continue
         if operation == 'ready': return 'READY'
         if operation == 'login':
             if login_sent:
@@ -376,7 +393,17 @@ def main():
                         error=str(exc) if isinstance(exc, NavigationError) else 'تعذر الوصول إلى شاشة رقم الإجراء الموحد',
                         result={'statusCode': getattr(exc, 'code', 'agent_error'),
                                 'screenshotTaken': bool(path), 'screenshotName': path.name if path else ''})
-                    log('Job stopped: ' + getattr(exc, 'code', 'agent_error'))
+                    code = getattr(exc, 'code', 'agent_error')
+                    log('Job stopped: ' + code + ' | reason: ' + str(exc))
+                    try:
+                        diag_dir = BASE / 'diagnostics'
+                        diag_dir.mkdir(exist_ok=True)
+                        snap = HELPER.call('snapshot', timeout=10)
+                        (diag_dir / 'last-ui-state.json').write_text(
+                            json.dumps(snap, ensure_ascii=False, indent=2), encoding='utf-8'
+                        )
+                    except Exception:
+                        pass
                 temp = outbox.with_suffix('.tmp')
                 temp.write_text(json.dumps(completion, ensure_ascii=True), encoding='utf-8')
                 temp.replace(outbox)

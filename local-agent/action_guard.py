@@ -24,7 +24,7 @@ def semantic_safe(node: dict) -> bool:
 
 def validate_navigation_action(snapshot: dict, action: dict, *, source: str = 'rule') -> dict:
     operation = action.get('operation')
-    if operation in ('ready', 'wait', 'login', 'login_sent'):
+    if operation in ('ready', 'wait', 'login', 'login_sent', 'dismiss_notifications'):
         return action
     if operation not in ('click', 'expand'):
         raise NavigationError('unsafe_action', 'The proposed ASYCUDA action is not navigation-safe.')

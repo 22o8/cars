@@ -55,3 +55,9 @@ It reports how many screen fingerprints, teachings and successful transitions ha
 - Navigation/intelligence safety tests: **16/16 passed**.
 - Website source was not changed by v8; npm dependencies were not available in the packaging environment, so the Nuxt build was not re-run here.
 - Live Windows/JAB End-to-End must still be tested on the authorized ASYCUDA workstation.
+
+
+## v8.1 resilience fixes
+- Java Security Warning is recognized by the official `asy.mof.gov.iq` host, not by product-name text alone.
+- The known unread-mail popup is dismissed with semantic Cancel/Escape after exact text recognition; no unnamed-button index guessing.
+- Agent logs now include the real stop reason and writes `local-agent/diagnostics/last-ui-state.json` on failures when possible.

@@ -22,9 +22,9 @@ class PolicyTests(unittest.TestCase):
   with self.assertRaises(NavigationError) as e:
    plan(snap(node(1,'alert','Delete?'),node(2,'push button','OK',1,action=True),node(3,'tree item','رقم الإجراء الموحد',action=True)))
   self.assertEqual(e.exception.code,'unknown_popup')
- def test_known_popup_scopes_no_to_popup(self):
+ def test_known_popup_uses_semantic_cancel(self):
   s=snap(node(1,'alert'),node(2,'label','لديك 13 رسالة غير مقروءة. هل تريد فتح صندوق البريد?',1),node(3,'push button','لا',1,action=True),node(4,'push button','لا',action=True))
-  self.assertEqual(plan(s)['target'],'3')
+  self.assertEqual(plan(s)['operation'],'dismiss_notifications')
  def test_unknown_no_is_not_clicked(self):
   with self.assertRaises(NavigationError): plan(snap(node(1,'alert','Confirm'),node(2,'push button','لا',1,action=True)))
  def test_save_requires_manual(self):
@@ -72,11 +72,11 @@ class PolicyTests(unittest.TestCase):
    planner=IntelligentPlanner(Path(td))
    s=snap(
     node(1,'alert'),
-    node(2,'label','لديك 13 رسالة غير مقروءة. هل تريد فتح صندوق البريد?',1),
+    node(2,'label','تنبيه تجريبي معروف للمستخدم',1),
     dict(node(3,'push button','',1,action=True),index_in_parent=0),
     dict(node(4,'push button','',1,action=True),index_in_parent=1),
    )
-   planner.teach(s,'NOTIFICATIONS_POPUP','click',{'role':'push button','name':'','index_in_parent':1,'parent_text':'هل تريد فتح صندوق البريد'},'dismiss unread-mail prompt')
+   planner.teach(s,'KNOWN_CUSTOM_POPUP','click',{'role':'push button','name':'','index_in_parent':1,'parent_text':'تنبيه تجريبي معروف للمستخدم'},'dismiss custom safe prompt')
    action=planner.decide(s)
    self.assertEqual(action['operation'],'click')
    self.assertEqual(action['target'],'4')
@@ -90,5 +90,21 @@ class PolicyTests(unittest.TestCase):
    with self.assertRaises(NavigationError) as e:
     planner.decide(s)
    self.assertIn(e.exception.code,('manual_intervention_required','unsafe_action'))
+
+
+
+class NotificationPopupTests(unittest.TestCase):
+    def test_known_unread_mail_popup_uses_semantic_cancel(self):
+        snapshot = {
+            'truncated': False,
+            'nodes': [
+                {'id':'0','parent':None,'role':'alert','name':'','states':['showing','enabled'],'action':False},
+                {'id':'1','parent':'0','role':'label','name':'لديك 13 رسالة غير مقروءة. هل تريد فتح صندوق البريد?','states':['showing','enabled'],'action':False},
+                {'id':'2','parent':'0','role':'push button','name':'','states':['showing','enabled'],'action':True},
+                {'id':'3','parent':'0','role':'push button','name':'','states':['showing','enabled'],'action':True},
+            ]
+        }
+        action = plan(snapshot)
+        self.assertEqual(action['operation'], 'dismiss_notifications')
 
 if __name__=='__main__': unittest.main()

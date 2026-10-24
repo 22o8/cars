@@ -69,11 +69,10 @@ def plan(snapshot):
     if state == 'LOGIN':
         return {'state': state, 'operation': 'login'}
     if state == 'NOTIFICATIONS_POPUP':
-        popup = next(n for n in nodes if n['id'] == info['popup'])
-        matches = [n for n in subtree(nodes, popup) if visible(n) and n['role'] == 'push button' and (norm(n.get('name','')) in NO or norm(n.get('description','')) in NO) and 'enabled' in n['states']]
-        if len(matches) != 1:
-            raise NavigationError('manual_intervention_required', 'تعذر تحديد زر رفض فتح البريد بأمان')
-        return {'state': state, 'operation': 'click', 'target': matches[0]['id']}
+        # The Iraqi client exposes the two JOptionPane buttons without accessible names.
+        # Do not guess by button index. The caller performs the semantic Cancel action (Esc)
+        # only after this exact popup text has been positively identified.
+        return {'state': state, 'operation': 'dismiss_notifications', 'safety_tag': 'known_notification_cancel'}
     for names, operation in ((PAGE, 'click'), (FOLDER, 'expand'), (DOCUMENTS, 'click')):
         matches = [n for n in nodes if visible(n) and norm(n['name']) in names and n['role'] in ('tree item', 'label', 'menu item', 'push button', 'page tab') and n.get('action') and 'enabled' in n['states']]
         if operation == 'expand':
