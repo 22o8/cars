@@ -1,11 +1,12 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if not exist .venv\Scripts\python.exe (
-  py -3.12 -m venv .venv
-  if errorlevel 1 exit /b 1
+chcp 65001 >nul
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-agent.ps1"
+if errorlevel 1 (
+  echo.
+  echo INSTALL FAILED. Read the error above.
+  pause
+  exit /b 1
 )
-call update-agent.bat
-if errorlevel 1 exit /b 1
-if not exist config.json .venv\Scripts\python.exe setup_credentials.py
-call install-autostart.bat
+pause

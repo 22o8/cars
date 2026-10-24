@@ -3,12 +3,27 @@ Never use JABDriver context manager: its __exit__ terminates the Java process.
 """
 import contextlib
 import json
+import os
 import struct
 import sys
 from pathlib import Path
 from navigation import NavigationError, detect_state
 from intelligent_planner import IntelligentPlanner
-DLL = r'C:\Program Files (x86)\Java\jre1.8.0_202\bin\WindowsAccessBridge-32.dll'
+def find_bridge_dll() -> str:
+    candidates = []
+    jab_home = os.environ.get('JAB_HOME', '').strip()
+    if jab_home:
+        candidates.append(Path(jab_home) / 'WindowsAccessBridge-32.dll')
+    java_root = Path(r'C:\Program Files (x86)\Java')
+    if java_root.exists():
+        candidates.extend(sorted(java_root.glob('jre*/bin/WindowsAccessBridge-32.dll'), reverse=True))
+        candidates.extend(sorted(java_root.glob('jdk*/jre/bin/WindowsAccessBridge-32.dll'), reverse=True))
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    raise RuntimeError('WindowsAccessBridge-32.dll was not found. Run install-agent.bat.')
+
+DLL = find_bridge_dll()
 
 class Session:
     def __init__(self):

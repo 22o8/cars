@@ -23,7 +23,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '5.3.0-hybrid-job-controls'
+VERSION = '5.4.0-clean-stable'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -325,6 +325,29 @@ def _security_relative_fallback(dlg) -> bool:
         return False
 
 
+def _security_absolute_fallback(dlg) -> bool:
+    """Trusted final fallback using live dialog bounds, never stored desktop coordinates.
+
+    This is only called after title + official asy.mof.gov.iq location + prompt text
+    were verified. Coordinates are recomputed from the current dialog rectangle.
+    """
+    try:
+        rect = dlg.rectangle()
+        left, top = int(rect.left), int(rect.top)
+        width, height = max(1, int(rect.width())), max(1, int(rect.height()))
+        dlg.set_focus()
+        time.sleep(.35)
+        # Confirmed Java 8 layout: checkbox in lower-left row, Run left of Cancel.
+        pyautogui.click(left + int(width * .085), top + int(height * .885))
+        time.sleep(.65)
+        pyautogui.click(left + int(width * .735), top + int(height * .885))
+        time.sleep(.9)
+        current, _ = _security_dialog()
+        return current is None
+    except Exception:
+        return False
+
+
 def _click_security_warning_if_present(timeout=40):
     deadline = time.monotonic() + timeout
     last_detail = ''
@@ -357,6 +380,11 @@ def _click_security_warning_if_present(timeout=40):
             if _security_relative_fallback(dlg):
                 _wait_until(lambda: _security_dialog()[0] is None, 20, .25, 'Java Security Warning to close')
                 log('Java Security Warning accepted through trusted relative-dialog fallback.')
+                return True
+
+            if _security_absolute_fallback(dlg):
+                _wait_until(lambda: _security_dialog()[0] is None, 20, .25, 'Java Security Warning to close')
+                log('Java Security Warning accepted through trusted live-dialog fallback.')
                 return True
 
             raise NavigationError(
@@ -622,7 +650,7 @@ def main():
                 except Exception as exc:
                     code = getattr(exc, 'code', 'agent_error')
                     cancelled = code == 'cancelled_by_user'
-                    AGENT_STATE = 'ONLINE' if cancelled else 'AGENT_ERROR'
+                    AGENT_STATE = 'ONLINE'
                     path = None if cancelled else _safe_error_screenshot()
                     completion.update(
                         ok=False,

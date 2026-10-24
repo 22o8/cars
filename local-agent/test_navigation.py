@@ -43,7 +43,7 @@ class PolicyTests(unittest.TestCase):
   tree=ast.parse(Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig'))
   function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run_navigation_test')
   calls={n.func.id for n in ast.walk(function) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)}
-  self.assertEqual(calls,{'ensure_unified_procedure_screen','take_screenshot','NavigationError'})
+  self.assertEqual(calls,{'check_cancelled','ensure_unified_procedure_screen','take_screenshot','NavigationError'})
  def _isolated_job_functions(self):
   tree=ast.parse(Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig'))
   wanted=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('create_unified_procedure','run_job')]

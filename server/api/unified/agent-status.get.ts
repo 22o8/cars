@@ -13,6 +13,5 @@ export default defineEventHandler(async (event) => {
   const lastSeen = raw ? String(raw) : ''
   const age = lastSeen ? Date.now() - new Date(lastSeen).getTime() : Number.POSITIVE_INFINITY
   const online = Number.isFinite(age) && age >= 0 && age < 45000
-  const health = await redisCommand(event, ['GET', `${agentSeenKey(deviceId)}:state`])
-  return { ok: true, deviceId, lastSeen, online, state: !online ? 'OFFLINE' : health === 'AGENT_ERROR' ? 'AGENT_ERROR' : 'ONLINE' }
+  return { ok: true, deviceId, lastSeen, online, state: online ? 'ONLINE' : 'OFFLINE' }
 })

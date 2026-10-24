@@ -1,7 +1,10 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-echo For a safe restart, stop the running agent between jobs first.
-echo This launcher will not forcibly terminate an active job.
-start "" wscript.exe "%~dp0run-agent-hidden.vbs"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0restart-agent.ps1"
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
+timeout /t 3 /nobreak >nul
 pause
