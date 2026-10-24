@@ -23,9 +23,10 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '5.2.0-hybrid-security-fix'
+VERSION = '5.3.0-hybrid-job-controls'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
+CURRENT_CANCEL_EVENT = None
 
 # Windows consoles can use legacy encodings. Never let a status message crash a completed job.
 for stream in (sys.stdout, sys.stderr):
@@ -50,6 +51,28 @@ def log(message: str):
             print(str(message).encode('ascii', 'replace').decode('ascii'), flush=True)
         except Exception:
             pass
+
+
+def check_cancelled():
+    event = CURRENT_CANCEL_EVENT
+    if event is not None and event.is_set():
+        raise NavigationError('cancelled_by_user', 'تم إيقاف الطلب بواسطة المستخدم')
+
+
+def cancellation_watcher(job_id: str, cancel_event: threading.Event, done_event: threading.Event):
+    """Poll cloud control state while a job is running. Temporary network errors are ignored."""
+    while not done_event.wait(0.8):
+        try:
+            response = requests.get(
+                api_url(f'/api/agent/jobs/{job_id}/control'),
+                headers=cloud_headers(), timeout=8
+            )
+            response.raise_for_status()
+            if response.json().get('cancelRequested'):
+                cancel_event.set()
+                return
+        except Exception:
+            continue
 
 
 def acquire_instance_lock():
@@ -92,6 +115,7 @@ def _wait_until(predicate, timeout: float, interval: float = .4, description: st
     deadline = time.time() + max(1.0, float(timeout))
     last_error = None
     while time.time() < deadline:
+        check_cancelled()
         try:
             value = predicate()
             if value:
@@ -264,10 +288,48 @@ def _security_keyboard_fallback(dlg) -> bool:
         return False
 
 
+def _security_relative_fallback(dlg) -> bool:
+    """Last-resort click using positions relative to the verified Java dialog.
+
+    These are NOT desktop coordinates. They are fractions of the trusted dialog's
+    current rectangle, so moving the dialog or changing screen resolution does not
+    invalidate them. The action is allowed only after the official ASYCUDA host
+    and warning text have already been verified.
+    """
+    try:
+        rect = dlg.rectangle()
+        width = max(1, int(rect.width()))
+        height = max(1, int(rect.height()))
+        dlg.set_focus()
+        time.sleep(.25)
+        # Java 8 risk checkbox is consistently in the lower-left action row.
+        for checkbox_x in (.075, .09, .11):
+            try:
+                dlg.click_input(coords=(int(width * checkbox_x), int(height * .885)))
+                time.sleep(.45)
+                break
+            except Exception:
+                continue
+        # Run is in the same row, left of Cancel. Try a tiny relative search band.
+        for run_x in (.73, .70, .76):
+            try:
+                dlg.click_input(coords=(int(width * run_x), int(height * .885)))
+                time.sleep(.75)
+                current, _ = _security_dialog()
+                if current is None:
+                    return True
+            except Exception:
+                continue
+        return False
+    except Exception:
+        return False
+
+
 def _click_security_warning_if_present(timeout=40):
     deadline = time.monotonic() + timeout
     last_detail = ''
     while time.monotonic() < deadline:
+        check_cancelled()
         dlg, backend = _security_dialog()
         if dlg:
             if not _is_trusted_asycuda_security_warning(dlg):
@@ -290,6 +352,11 @@ def _click_security_warning_if_present(timeout=40):
             if _security_keyboard_fallback(dlg):
                 _wait_until(lambda: _security_dialog()[0] is None, 20, .25, 'Java Security Warning to close')
                 log('Java Security Warning accepted through safe keyboard fallback.')
+                return True
+
+            if _security_relative_fallback(dlg):
+                _wait_until(lambda: _security_dialog()[0] is None, 20, .25, 'Java Security Warning to close')
+                log('Java Security Warning accepted through trusted relative-dialog fallback.')
                 return True
 
             raise NavigationError(
@@ -343,10 +410,12 @@ def ensure_unified_procedure_screen():
     login_sent = False
     previous, repeats = None, 0
     while time.monotonic() < deadline:
+        check_cancelled()
         if _security_dialog():
             _click_security_warning_if_present(10)
         try:
             result = HELPER.call('step')
+            check_cancelled()
         except NavigationError as exc:
             if exc.code not in ('jab_unavailable', 'helper_unavailable'):
                 raise
@@ -441,7 +510,9 @@ def send_whatsapp(path: Path, to: str, serial: str, company_name: str, result_no
 
 
 def run_navigation_test():
+    check_cancelled()
     ensure_unified_procedure_screen()
+    check_cancelled()
     if HELPER.call('snapshot')['state'] != 'UNIFIED_PROCEDURE_OPEN':
         raise NavigationError('navigation_changed', 'تغيرت شاشة الأسيكودا قبل التقاط الصورة')
     path = take_screenshot('test')
@@ -512,7 +583,7 @@ def heartbeat(stop):
 
 
 def main():
-    global AGENT_STATE
+    global AGENT_STATE, CURRENT_CANCEL_EVENT
     _instance_lock = acquire_instance_lock()
     stop = threading.Event()
     threading.Thread(target=heartbeat, args=(stop,), daemon=True).start()
@@ -535,26 +606,48 @@ def main():
                     continue
                 AGENT_STATE = 'ONLINE'
                 completion = {'job_id': str(job['id']), 'ok': False}
+                cancel_event = threading.Event()
+                watcher_done = threading.Event()
+                CURRENT_CANCEL_EVENT = cancel_event
+                watcher = threading.Thread(
+                    target=cancellation_watcher,
+                    args=(str(job['id']), cancel_event, watcher_done),
+                    daemon=True
+                )
+                watcher.start()
                 try:
+                    check_cancelled()
                     completion.update(ok=True, result=run_job(job))
+                    check_cancelled()
                 except Exception as exc:
-                    AGENT_STATE = 'AGENT_ERROR'
-                    path = _safe_error_screenshot()
-                    completion.update(ok=False,
-                        error=str(exc) if isinstance(exc, NavigationError) else 'تعذر الوصول إلى شاشة رقم الإجراء الموحد',
-                        result={'statusCode': getattr(exc, 'code', 'agent_error'),
-                                'screenshotTaken': bool(path), 'screenshotName': path.name if path else ''})
                     code = getattr(exc, 'code', 'agent_error')
-                    log('Job stopped: ' + code + ' | reason: ' + str(exc))
-                    try:
-                        diag_dir = BASE / 'diagnostics'
-                        diag_dir.mkdir(exist_ok=True)
-                        snap = HELPER.call('snapshot', timeout=10)
-                        (diag_dir / 'last-ui-state.json').write_text(
-                            json.dumps(snap, ensure_ascii=False, indent=2), encoding='utf-8'
-                        )
-                    except Exception:
-                        pass
+                    cancelled = code == 'cancelled_by_user'
+                    AGENT_STATE = 'ONLINE' if cancelled else 'AGENT_ERROR'
+                    path = None if cancelled else _safe_error_screenshot()
+                    completion.update(
+                        ok=False,
+                        error='' if cancelled else (str(exc) if isinstance(exc, NavigationError) else 'تعذر الوصول إلى شاشة رقم الإجراء الموحد'),
+                        result={
+                            'statusCode': code,
+                            'message': 'تم إيقاف الطلب بواسطة المستخدم.' if cancelled else '',
+                            'screenshotTaken': bool(path),
+                            'screenshotName': path.name if path else ''
+                        }
+                    )
+                    log(('Job cancelled: ' if cancelled else 'Job stopped: ') + code + ' | reason: ' + str(exc))
+                    if not cancelled:
+                        try:
+                            diag_dir = BASE / 'diagnostics'
+                            diag_dir.mkdir(exist_ok=True)
+                            snap = HELPER.call('snapshot', timeout=10)
+                            (diag_dir / 'last-ui-state.json').write_text(
+                                json.dumps(snap, ensure_ascii=False, indent=2), encoding='utf-8'
+                            )
+                        except Exception:
+                            pass
+                finally:
+                    watcher_done.set()
+                    CURRENT_CANCEL_EVENT = None
                 temp = outbox.with_suffix('.tmp')
                 temp.write_text(json.dumps(completion, ensure_ascii=True), encoding='utf-8')
                 temp.replace(outbox)

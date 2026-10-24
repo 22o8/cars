@@ -19,6 +19,9 @@ globalThis.fetch = async (url,options) => {
  else if(cmd==='GET') result=store.get(key)||null
  else if(cmd==='LPUSH'){ const list=store.get(key)||[];list.unshift(...args);store.set(key,list);result=list.length }
  else if(cmd==='LTRIM'){store.set(key,(store.get(key)||[]).slice(Number(args[0]),Number(args[1])+1));result='OK'}
+ else if(cmd==='LRANGE'){result=(store.get(key)||[]).slice(Number(args[0]),Number(args[1])+1)}
+ else if(cmd==='LREM'){const list=store.get(key)||[];const value=String(args[1]);const next=list.filter(x=>String(x)!==value);result=list.length-next.length;store.set(key,next)}
+ else if(cmd==='DEL'){result=store.delete(key)?1:0}
  else if(cmd==='PING') result='PONG'
  else throw Error('Unexpected command: '+cmd)
  return {ok:true,json:async()=>({result})}
@@ -30,6 +33,11 @@ const complete=await load('agent/complete.post.ts')
 const status=await load('unified/agent-status.get.ts')
 const heartbeat=await load('agent/heartbeat.post.ts')
 const retry=await load('unified/jobs/[id]/retry.post.ts')
+const cancel=await load('unified/jobs/[id]/cancel.post.ts')
+const del=await load('unified/jobs/[id]/delete.delete.ts')
+const cancelAll=await load('unified/jobs/cancel-all.post.ts')
+const clearAll=await load('unified/jobs/clear.delete.ts')
+const control=await load('agent/jobs/[id]/control.get.ts')
 const mobile=()=>({headers:{'x-tarabil-mobile-pin':config.mobilePin}})
 const agent=body=>({headers:{authorization:'Bearer '+config.agentDeviceToken,'x-tarabil-device-id':config.agentDeviceId},body})
 beforeEach(()=>store.clear())
@@ -63,3 +71,31 @@ test('completed test cannot be retried',async()=>{
  await assert.rejects(()=>retry({...mobile(),params:{id:job.id}}),{statusCode:409})
 })
 
+
+test('pending job can be stopped immediately',async()=>{
+ const {job}=await testJob(mobile())
+ const result=await cancel({...mobile(),params:{id:job.id}})
+ assert.equal(result.job.status,'cancelled')
+ assert.equal(result.job.cancelRequested,true)
+ assert.deepEqual(store.get('tarabil:unified:queue:test-device'),[])
+})
+test('processing cancellation is visible to agent control endpoint',async()=>{
+ const {job}=await testJob(mobile());job.status='processing';store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+ await cancel({...mobile(),params:{id:job.id}})
+ const result=await control({...agent(),params:{id:job.id}})
+ assert.equal(result.cancelRequested,true);assert.equal(result.status,'cancelled')
+})
+test('deleting a running job removes it and signals cancellation',async()=>{
+ const {job}=await testJob(mobile());job.status='processing';store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+ await del({...mobile(),params:{id:job.id}})
+ assert.equal(store.get('tarabil:unified:job:'+job.id),undefined)
+ const result=await control({...agent(),params:{id:job.id}})
+ assert.equal(result.cancelRequested,true);assert.equal(result.deleted,true)
+})
+test('cancel all stops queued jobs and clear all removes history',async()=>{
+ const a=(await testJob(mobile())).job;const b=(await testJob(mobile())).job
+ const stopped=await cancelAll(mobile());assert.equal(stopped.stopped,2)
+ assert.equal(JSON.parse(store.get('tarabil:unified:job:'+a.id)).status,'cancelled')
+ const cleared=await clearAll(mobile());assert.equal(cleared.deleted,2)
+ assert.equal(store.get('tarabil:unified:recent').length,0)
+})

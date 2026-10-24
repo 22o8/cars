@@ -1,0 +1,29 @@
+ASYCUDA Pro v8.2 - Java Security Warning fix
+
+This update changes only the Local Agent behavior for the Java 8 Security Warning.
+
+What changed:
+- Verifies the dialog is the official Java Security Warning for asy.mof.gov.iq.
+- Tries UI Automation / Win32 control discovery first.
+- Accepts the risk checkbox using the discovered control, not a stored screen coordinate.
+- Activates Run using the discovered Run control.
+- Uses a conservative keyboard fallback only after the official host was verified.
+- Logs whether UIA/Win32 controls were found if safe automation still fails.
+
+No Vercel/API changes are required for this patch.
+Keep these existing local files when updating:
+- config.json
+- .venv
+- .venv32
+- local credentials in Windows Credential Manager
+
+Update steps:
+1. Stop the running Agent.
+2. Replace the files in C:\asycuda-office-1 with the files from local-agent in this release, preserving config.json/.venv/.venv32.
+3. Run restart-agent.bat.
+4. Press the test button on the web UI.
+
+Expected log:
+Java Security Warning accepted automatically.
+(or)
+Java Security Warning accepted through safe keyboard fallback.

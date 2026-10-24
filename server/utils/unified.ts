@@ -1,4 +1,4 @@
-export type UnifiedJobStatus = 'pending' | 'processing' | 'done' | 'failed'
+export type UnifiedJobStatus = 'pending' | 'processing' | 'cancelling' | 'done' | 'failed' | 'cancelled'
 export type UnifiedJobKind = 'execute' | 'test' | 'test_navigation'
 
 export interface UnifiedCloudJob {
@@ -21,6 +21,9 @@ export interface UnifiedCloudJob {
   message?: string
   error?: string
   attempts: number
+  cancelRequested?: boolean
+  cancelRequestedAt?: string
+  deleteAfterCancel?: boolean
 }
 
 export const queueKey = (deviceId: string) => `tarabil:unified:queue:${deviceId}`

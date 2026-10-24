@@ -4,7 +4,7 @@ import type { Transaction } from '~/types'
 type CloudJob = {
   id:string
   kind?:'execute'|'test'|'test_navigation'
-  status:'pending'|'processing'|'done'|'failed'
+  status:'pending'|'processing'|'cancelling'|'done'|'failed'|'cancelled'
   companyCode:string
   companyName?:string
   whatsappNumber:string
@@ -18,6 +18,8 @@ type CloudJob = {
   screenshotName?:string
   error?:string
   statusCode?:string
+  message?:string
+  cancelRequested?:boolean
   attempts:number
 }
 
@@ -52,7 +54,7 @@ function showError(e:any){
   setTimeout(()=>errorMessage.value='', 4500)
 }
 function statusLabel(s:CloudJob['status']){
-  return { pending:'بانتظار الجهاز', processing:'جاري التنفيذ على الأسيكودا', done:'مكتمل', failed:'فشل' }[s]
+  return { pending:'بانتظار الجهاز', processing:'جاري التنفيذ على الأسيكودا', cancelling:'جاري الإيقاف', done:'مكتمل', failed:'فشل', cancelled:'تم الإيقاف' }[s]
 }
 function jobError(job:CloudJob){
   if(job.statusCode === 'unknown_popup') return 'ظهرت نافذة غير معروفة داخل ASYCUDA'
@@ -146,6 +148,45 @@ async function retry(job:CloudJob){
   }catch(e:any){ showError(e) }
 }
 
+async function cancelJob(job:CloudJob){
+  try{
+    await $fetch(`/api/unified/jobs/${job.id}/cancel`, { method:'POST', headers:headers() })
+    successMessage.value = job.status==='pending' ? 'تم إلغاء الطلب' : 'تم إرسال أمر الإيقاف إلى جهاز الأسيكودا'
+    setTimeout(()=>successMessage.value='', 3000)
+    await refreshAll()
+  }catch(e:any){ showError(e) }
+}
+
+async function deleteJob(job:CloudJob){
+  if(import.meta.client && !confirm('حذف هذا الطلب من القائمة؟')) return
+  try{
+    const res:any = await $fetch(`/api/unified/jobs/${job.id}/delete`, { method:'DELETE', headers:headers() })
+    successMessage.value = res?.stopping ? 'جاري إيقاف الطلب وسيُحذف تلقائياً' : 'تم حذف الطلب'
+    setTimeout(()=>successMessage.value='', 3000)
+    await refreshAll()
+  }catch(e:any){ showError(e) }
+}
+
+async function cancelAll(){
+  if(import.meta.client && !confirm('إيقاف جميع الطلبات المنتظرة أو الجارية؟')) return
+  try{
+    const res:any = await $fetch('/api/unified/jobs/cancel-all', { method:'POST', headers:headers() })
+    successMessage.value = `تم إرسال الإيقاف إلى ${res?.stopped || 0} طلب`
+    setTimeout(()=>successMessage.value='', 3000)
+    await refreshAll()
+  }catch(e:any){ showError(e) }
+}
+
+async function clearAll(){
+  if(import.meta.client && !confirm('حذف قائمة الطلبات؟ الطلب الجاري سيُوقف أولاً ثم يُحذف تلقائياً.')) return
+  try{
+    const res:any = await $fetch('/api/unified/jobs/clear', { method:'DELETE', headers:headers() })
+    successMessage.value = `تم حذف ${res?.deleted || 0} طلب${res?.stopping ? `، وجاري إيقاف ${res.stopping}` : ''}`
+    setTimeout(()=>successMessage.value='', 3500)
+    await refreshAll()
+  }catch(e:any){ showError(e) }
+}
+
 function syncLocalTransactions(){
   for(const job of jobs.value){
     if(job.status !== 'done' || !job.unifiedProcedureNo || !job.serial) continue
@@ -225,7 +266,11 @@ watch([mobilePin, whatsappNumber], savePrefs)
   <section class="card cloud-jobs-card">
     <div class="section-title">
       <div><h3 style="margin:0">آخر الطلبات</h3><small class="muted">تتحدث تلقائياً كل عدة ثواني</small></div>
-      <button class="btn mini ghost" :disabled="loadingJobs" @click="refreshAll">تحديث</button>
+      <div class="right-actions">
+        <button class="btn mini danger" :disabled="loadingJobs || !jobs.some(j=>['pending','processing','cancelling'].includes(j.status))" @click="cancelAll">إيقاف الكل</button>
+        <button class="btn mini ghost" :disabled="loadingJobs || !jobs.length" @click="clearAll">حذف الطلبات</button>
+        <button class="btn mini ghost" :disabled="loadingJobs" @click="refreshAll">تحديث</button>
+      </div>
     </div>
 
     <div v-if="!mobilePin" class="empty">أدخل رمز دخول الهاتف حتى تظهر الطلبات.</div>
@@ -253,12 +298,20 @@ watch([mobilePin, whatsappNumber], savePrefs)
             <small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع الصورة المرسلة'}}</b>
             <span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم التنفيذ بدون إرسال واتساب'}}</span>
           </template>
+          <template v-else-if="job.status==='cancelled'">
+            <small>الحالة</small><b>تم إيقاف الطلب بواسطة المستخدم</b>
+          </template>
           <template v-else-if="job.status==='failed'">
             <small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b>
           </template>
+          <template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template>
           <template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template>
         </div>
-        <button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button>
+        <div class="cloud-job-actions">
+          <button v-if="job.status==='pending' || job.status==='processing' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button>
+          <button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button>
+          <button class="btn ghost" @click="deleteJob(job)">حذف</button>
+        </div>
       </article>
     </div>
   </section>

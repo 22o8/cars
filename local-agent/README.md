@@ -56,3 +56,6 @@ Original top-level agent files: `C:\asycuda-office-1\backups\20261023-213613`.
 Original website source: `C:\Users\cdste\Documents\Codex\2026-10-23\files-pasted-by-the-user-c\work\site-backup-20261023-213613`.
 Use `rollback.py BACKUP_DIRECTORY` only after stopping the agent between jobs. It refuses when the instance port is occupied, restores original top-level files and preserves current config.json and both virtual environments. Newly added modules remain unused by the restored old agent. Review safety of the old implementation before restarting it.
 Legacy calibration files are archived under `legacy-calibration`; they are not imported by the agent.
+
+## v8.3 job controls
+The agent polls `/api/agent/jobs/:id/control` while a job is active. A cancelled or deleted cloud job raises `cancelled_by_user` locally, returns the agent to ONLINE, and prevents the stopped job from being treated as a failure. The Java launcher also has a trusted relative-dialog fallback for the verified `asy.mof.gov.iq` Security Warning when Java 8 exposes no usable checkbox control.
