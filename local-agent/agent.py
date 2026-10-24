@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '5.8.0-interactive-review'
+VERSION = '5.9.0-review-watchdog'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -503,6 +503,7 @@ def _review_copy(state: str):
         'DECLARATION_OPEN': ('يوجد بيان مفتوح', 'وجد النظام بياناً مفتوحاً داخل ASYCUDA. راجع الصورة داخل تفاصيل الطلب ثم قرر هل تريد إغلاق الصفحة ومتابعة رقم الإجراء الموحد أو إبقاءها وإيقاف الطلب.'),
         'UNKNOWN_POPUP': ('ظهرت نافذة غير معروفة', 'لن يضغط النظام أي زر داخل هذه النافذة قبل قرارك. ستظهر الصورة داخل تفاصيل الطلب لتحدد هل تريد إيقاف الطلب أو إغلاق النافذة والمتابعة.'),
         'MANUAL_INTERVENTION': ('تحتاج الشاشة إلى قرار', 'ظهرت نافذة حفظ أو تأكيد أو حالة حساسة. أوقف النظام التنفيذ مؤقتاً ورفع صورة الشاشة إلى تفاصيل الطلب بانتظار قرارك.'),
+        'UNKNOWN_SCREEN': ('توقفت الملاحة على شاشة غير متوقعة', 'لم يتمكن النظام من التقدم بأمان داخل ASYCUDA. تم إيقاف الطلب مؤقتاً ورفع صورة الشاشة حتى تختار إغلاق الشاشة المفتوحة والمتابعة أو إيقاف الطلب.'),
     }
     return mapping.get(state, ('ظهرت شاشة غير متوقعة', 'تم إيقاف الطلب مؤقتاً حتى تراجع الشاشة وتحدد الإجراء المناسب.'))
 
@@ -613,7 +614,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
     login_sent = False
     previous, repeats = None, 0
     skip_review_once = None
-    review_states = {'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN', 'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP', 'MANUAL_INTERVENTION'}
+    review_states = {'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN', 'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP', 'MANUAL_INTERVENTION', 'UNKNOWN_SCREEN'}
     while time.monotonic() < deadline:
         check_cancelled()
         if _security_dialog():
@@ -709,7 +710,24 @@ def ensure_unified_procedure_screen(job_id: str = ''):
         marker = (result['state'], operation, result.get('target'))
         repeats = repeats + 1 if marker == previous else 0
         previous = marker
+
+        # Fail into interactive review instead of leaving a job spinning or
+        # failing silently when a modal screen is visually blocking JAB but is
+        # not exposed with a reliable role. This guarantees the operator gets
+        # a screenshot and a decision point.
+        if job_id and repeats >= 4 and operation == 'wait':
+            review_id = _send_review(job_id, 'UNKNOWN_SCREEN')
+            decision = _wait_for_review_decision(job_id, review_id, 'UNKNOWN_SCREEN')
+            previous, repeats = None, 0
+            if decision == 'resume':
+                skip_review_once = 'UNKNOWN_SCREEN'
+            continue
         if repeats >= 3 and operation not in ('wait', 'login'):
+            if job_id:
+                review_id = _send_review(job_id, 'UNKNOWN_SCREEN')
+                _wait_for_review_decision(job_id, review_id, 'UNKNOWN_SCREEN')
+                previous, repeats = None, 0
+                continue
             raise NavigationError('navigation_stalled', 'تعذر الوصول إلى شاشة رقم الإجراء الموحد')
         time.sleep(.5)
     raise NavigationError('navigation_timeout', 'تعذر الوصول إلى شاشة رقم الإجراء الموحد')

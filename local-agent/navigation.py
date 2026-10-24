@@ -31,13 +31,27 @@ def detect_state(snapshot):
     if snapshot.get('truncated'):
         raise NavigationError('manual_intervention_required', 'تعذر قراءة واجهة الأسيكودا كاملة')
     nodes = [n for n in snapshot['nodes'] if visible(n)]
-    for popup in [n for n in nodes if n['role'] in ('alert', 'dialog')]:
+
+    # Iraqi ASYCUDA has used multiple unread-mail phrasings across builds
+    # (e.g. numeric counts and the singular "رسالة واحدة"). Detect the
+    # semantic content anywhere in the visible accessibility tree instead of
+    # depending on one exact sentence or one specific Swing role.
+    all_visible_text = norm(' '.join(n.get('name','') for n in nodes if n['role'] not in ('text', 'password text')))
+    unread_mail = (
+        ('صندوق البريد' in all_visible_text or 'mailbox' in all_visible_text)
+        and ('غير مقرو' in all_visible_text or 'unread' in all_visible_text)
+        and ('رسالة' in all_visible_text or 'رسائل' in all_visible_text or 'message' in all_visible_text)
+    )
+    if unread_mail:
+        popup = next((n for n in nodes if n['role'] in ('alert', 'dialog', 'option pane') or 'modal' in n.get('states', [])), None)
+        return {'state': 'NOTIFICATIONS_POPUP', 'popup': popup['id'] if popup else ''}
+
+    popup_nodes = [n for n in nodes if n['role'] in ('alert', 'dialog', 'option pane') or 'modal' in n.get('states', [])]
+    for popup in popup_nodes:
         inside = subtree(nodes, popup)
         text = norm(' '.join(n['name'] for n in inside if n['role'] not in ('text', 'password text')))
         if any(x in text for x in ('unsaved', 'discard', 'save changes', 'غير محفوظ', 'حفظ التغييرات', 'تجاهل التغييرات')):
             return {'state': 'MANUAL_INTERVENTION', 'popup': popup['id']}
-        if re.search(r'لديك\s+\d+\s+رسالة غير مقروءة', text) and 'هل تريد فتح صندوق البريد' in text:
-            return {'state': 'NOTIFICATIONS_POPUP', 'popup': popup['id']}
         if any(n['role'] == 'password text' for n in inside):
             return {'state': 'LOGIN', 'popup': popup['id']}
         return {'state': 'UNKNOWN_POPUP', 'popup': popup['id']}

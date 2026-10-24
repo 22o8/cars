@@ -108,6 +108,14 @@ class InteractiveReviewStateTests(unittest.TestCase):
 
 
 class NotificationPopupTests(unittest.TestCase):
+    def test_singular_unread_mail_popup_is_detected(self):
+        s=snap(node(1,'alert'), node(2,'label','لديك رسالة واحدة غير مقروءة. هل تريد فتح صندوق البريد؟',1))
+        self.assertEqual(detect_state(s)['state'], 'NOTIFICATIONS_POPUP')
+
+    def test_unread_mail_text_detected_even_without_alert_role(self):
+        s=snap(node(1,'panel','',states=['showing','enabled']), node(2,'label','لديك رسالة غير مقروءة. هل تريد فتح صندوق البريد؟',1))
+        self.assertEqual(detect_state(s)['state'], 'NOTIFICATIONS_POPUP')
+
     def test_known_unread_mail_popup_uses_semantic_cancel(self):
         snapshot = {
             'truncated': False,
