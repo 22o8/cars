@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '5.9.0-review-watchdog'
+VERSION = '6.0.0-window-aware-review'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -114,6 +114,129 @@ def focus_window(win):
         time.sleep(.8)
     except Exception:
         pass
+
+
+def _wrapper_rect(win):
+    try:
+        r = win.rectangle()
+        return int(r.left), int(r.top), int(r.right), int(r.bottom)
+    except Exception:
+        try:
+            return int(win.left), int(win.top), int(win.left + win.width), int(win.top + win.height)
+        except Exception:
+            return 0, 0, 0, 0
+
+
+def _rect_area(rect):
+    l, t, r, b = rect
+    return max(0, r-l) * max(0, b-t)
+
+
+def _asycuda_top_windows():
+    """Enumerate visible top-level ASYCUDA Java windows.
+
+    Swing occasionally exposes a modal JOptionPane as a separate native top-level
+    window while Java Access Bridge continues to report the main frame.  This is
+    the exact case that previously left jobs spinning forever.
+    """
+    found = []
+    seen = set()
+    for backend in ('win32', 'uia'):
+        try:
+            for win in Desktop(backend=backend).windows(visible_only=True):
+                try:
+                    title = (win.window_text() or '').strip()
+                except Exception:
+                    title = ''
+                if 'asycudaworld production server' not in title.casefold():
+                    continue
+                try:
+                    hwnd = int(win.handle)
+                except Exception:
+                    hwnd = 0
+                key = hwnd or (backend, title, _wrapper_rect(win))
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append({'wrapper': win, 'backend': backend, 'hwnd': hwnd, 'title': title, 'rect': _wrapper_rect(win)})
+        except Exception:
+            continue
+    return found
+
+
+def _find_asycuda_modal_window():
+    """Return a separate small ASYCUDA window that is blocking the main frame.
+
+    We deliberately use geometry + title, not the dialog text.  This catches old
+    Java 8 JOptionPane windows even when JAB/UIA exposes no useful child text.
+    The main frame is the largest matching ASYCUDA window; a candidate must be
+    substantially smaller and spatially overlap the main frame.
+    """
+    wins = _asycuda_top_windows()
+    if len(wins) < 2:
+        return None
+    main = max(wins, key=lambda x: _rect_area(x['rect']))
+    main_area = _rect_area(main['rect'])
+    if main_area <= 0:
+        return None
+    ml, mt, mr, mb = main['rect']
+    candidates = []
+    for item in wins:
+        if item is main or (item['hwnd'] and item['hwnd'] == main['hwnd']):
+            continue
+        area = _rect_area(item['rect'])
+        if area <= 0 or area >= main_area * 0.72:
+            continue
+        l,t,r,b = item['rect']
+        overlap = max(0, min(r,mr)-max(l,ml)) * max(0, min(b,mb)-max(t,mt))
+        if overlap <= 0:
+            continue
+        candidates.append(item)
+    if not candidates:
+        return None
+    # Prefer the top-most/smallest modal-like window.
+    return min(candidates, key=lambda x: _rect_area(x['rect']))
+
+
+def _modal_identity(item):
+    if not item:
+        return ''
+    return f"{item.get('hwnd',0)}:{item.get('title','')}:{item.get('rect')}"
+
+
+def _dismiss_native_modal(expected_identity: str = ''):
+    item = _find_asycuda_modal_window()
+    if not item:
+        return True
+    if expected_identity and _modal_identity(item) != expected_identity:
+        # The screen changed while the operator was reviewing it; do not close a
+        # different dialog by mistake. It will be presented as a fresh review.
+        return False
+    win = item['wrapper']
+    try:
+        win.set_focus()
+    except Exception:
+        try:
+            win.set_focus()
+        except Exception:
+            pass
+    # First try the semantic Cancel action.
+    try:
+        send_keys('{ESC}')
+    except Exception:
+        pyautogui.press('esc')
+    time.sleep(.9)
+    if not _find_asycuda_modal_window():
+        return True
+    # If Escape is ignored, emulate the title-bar X/WM_CLOSE after the user has
+    # explicitly chosen "close the open page and continue".  Any confirmation
+    # created by the close is detected on the next loop and reviewed separately.
+    try:
+        win.close()
+    except Exception:
+        pass
+    time.sleep(.9)
+    return _find_asycuda_modal_window() is None
 
 
 def _wait_until(predicate, timeout: float, interval: float = .4, description: str = 'condition'):
@@ -517,7 +640,7 @@ def _encode_review_screenshot(path: Path):
     return base64.b64encode(buf.getvalue()).decode('ascii'), 'image/jpeg'
 
 
-def _send_review(job_id: str, state: str):
+def _send_review(job_id: str, state: str, metadata: dict | None = None):
     title, message = _review_copy(state)
     path = take_screenshot('review-' + state.lower())
     encoded, mime = _encode_review_screenshot(path)
@@ -527,6 +650,7 @@ def _send_review(job_id: str, state: str):
         'message': message,
         'screenshotMime': mime,
         'screenshotBase64': encoded,
+        'metadata': metadata or {},
     }
     response = None
     last_error = None
@@ -556,6 +680,8 @@ def _dismiss_review_screen(state: str):
     win = find_asycuda_window()
     if win:
         focus_window(win)
+    if state == 'OS_MODAL_BLOCKER':
+        return _dismiss_native_modal()
     if state == 'NOTIFICATIONS_POPUP':
         pyautogui.press('esc')
     elif state in ('DECLARATION_OPEN', 'PREDECLARATION_OPEN', 'NOTIFICATIONS_PAGE', 'OTHER_PAGE_OPEN'):
@@ -614,7 +740,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
     login_sent = False
     previous, repeats = None, 0
     skip_review_once = None
-    review_states = {'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN', 'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP', 'MANUAL_INTERVENTION', 'UNKNOWN_SCREEN'}
+    review_states = {'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN', 'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP', 'MANUAL_INTERVENTION', 'UNKNOWN_SCREEN', 'OS_MODAL_BLOCKER'}
     while time.monotonic() < deadline:
         check_cancelled()
         if _security_dialog():
@@ -627,6 +753,29 @@ def ensure_unified_procedure_screen(job_id: str = ''):
                 raise
             time.sleep(.5)
             continue
+
+        # Native Java modal watchdog. Old Java 8 can place JOptionPane in a
+        # separate HWND that is invisible to the main JAB tree. Do this after
+        # snapshot so the legitimate LOGIN dialog is never mistaken for review.
+        if job_id and state != 'LOGIN':
+            native_modal = _find_asycuda_modal_window()
+            if native_modal:
+                identity = _modal_identity(native_modal)
+                metadata = {
+                    'nativeWindow': True,
+                    'title': native_modal.get('title',''),
+                    'hwnd': native_modal.get('hwnd',0),
+                    'rect': list(native_modal.get('rect') or ()),
+                }
+                log('Native ASYCUDA modal detected; pausing job for review: ' + identity)
+                review_id = _send_review(job_id, 'OS_MODAL_BLOCKER', metadata)
+                decision = _wait_for_review_decision(job_id, review_id, 'OS_MODAL_BLOCKER')
+                if decision == 'dismiss_and_resume':
+                    # _wait_for_review_decision already performs the close. If a
+                    # confirmation appears, the next loop catches it as a new review.
+                    pass
+                previous, repeats = None, 0
+                continue
 
         if job_id and state in review_states and skip_review_once != state:
             review_id = _send_review(job_id, state)
@@ -864,7 +1013,7 @@ def heartbeat(stop):
     while not stop.is_set():
         try:
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner']}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code

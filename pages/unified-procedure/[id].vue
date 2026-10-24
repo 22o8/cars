@@ -17,7 +17,7 @@ function headers(){ return { 'X-Tarabil-Mobile-Pin': mobilePin.value.trim() } }
 function fmt(iso?:string){ if(!iso) return ''; try { return new Date(iso).toLocaleString('ar-IQ') } catch { return iso } }
 function statusLabel(s?:string){ return ({pending:'بانتظار الجهاز',processing:'جاري التنفيذ',needs_review:'بانتظار قرارك',cancelling:'جاري الإيقاف',done:'مكتمل',failed:'فشل',cancelled:'تم الإيقاف'} as any)[s || ''] || s || '' }
 function reviewStateLabel(s?:string){
-  const map:any={NOTIFICATIONS_POPUP:'نافذة إشعارات',NOTIFICATIONS_PAGE:'صفحة الإشعارات/الرسائل',OTHER_PAGE_OPEN:'صفحة أخرى مفتوحة',PREDECLARATION_OPEN:'بيان مسبق مفتوح',DECLARATION_OPEN:'بيان مفتوح',UNKNOWN_POPUP:'نافذة غير معروفة',MANUAL_INTERVENTION:'شاشة تحتاج مراجعة',UNKNOWN_SCREEN:'شاشة غير متوقعة'}
+  const map:any={OS_MODAL_BLOCKER:'نافذة Java فوق ASYCUDA',NOTIFICATIONS_POPUP:'نافذة إشعارات',NOTIFICATIONS_PAGE:'صفحة الإشعارات/الرسائل',OTHER_PAGE_OPEN:'صفحة أخرى مفتوحة',PREDECLARATION_OPEN:'بيان مسبق مفتوح',DECLARATION_OPEN:'بيان مفتوح',UNKNOWN_POPUP:'نافذة غير معروفة',MANUAL_INTERVENTION:'شاشة تحتاج مراجعة',UNKNOWN_SCREEN:'شاشة غير متوقعة'}
   return map[s || ''] || s || 'شاشة غير متوقعة'
 }
 async function unlockDetails(){

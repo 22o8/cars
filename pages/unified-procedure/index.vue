@@ -35,6 +35,7 @@ const loadingJobs = ref(false)
 const agentOnline = ref(false)
 const lastSeen = ref('')
 const deviceId = ref('')
+const agentVersion = ref('')
 const errorMessage = ref('')
 const agentState = ref<'checking'|'ONLINE'|'OFFLINE'|'AUTH_ERROR'|'SERVER_ERROR'|'AGENT_ERROR'>('checking')
 const successMessage = ref('')
@@ -133,6 +134,7 @@ async function refreshAgent(){
     agentState.value = res.state || (res.online ? 'ONLINE' : 'OFFLINE')
     lastSeen.value = res.lastSeen || ''
     deviceId.value = res.deviceId || ''
+    agentVersion.value = res.version || ''
   }catch(e:any){
     agentOnline.value=false
     const sc = e?.statusCode || e?.response?.status
@@ -234,7 +236,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
       <template v-else-if="agentState==='AGENT_ERROR'">خطأ في برنامج الجهاز</template>
       <template v-else-if="agentState==='checking'">جاري فحص الاتصال</template>
       <template v-else>جهاز الأسيكودا غير متصل</template>
-      <small v-if="lastSeen">آخر اتصال: {{fmt(lastSeen)}}</small>
+      <small v-if="lastSeen">آخر اتصال: {{fmt(lastSeen)}}<template v-if="agentVersion"> · Agent {{agentVersion}}</template></small>
     </div>
   </div>
 

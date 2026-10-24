@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
   const message = String(body?.message || '').slice(0, 1000)
   const mime = String(body?.screenshotMime || 'image/jpeg').slice(0, 80)
   const data = String(body?.screenshotBase64 || '')
+  const metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : undefined
   if (!/^image\/(jpeg|png|webp)$/i.test(mime)) throw createError({ statusCode: 400, statusMessage: 'unsupported image type' })
   if (!data || data.length > 4_000_000) throw createError({ statusCode: 400, statusMessage: 'review screenshot missing or too large' })
 
@@ -34,7 +35,8 @@ export default defineEventHandler(async (event) => {
     message,
     createdAt: new Date().toISOString(),
     screenshotMime: mime,
-    screenshotAvailable: true
+    screenshotAvailable: true,
+    metadata
   }
   await redisCommand(event, ['SET', reviewScreenshotKey(id, review.id), data, 'EX', 604800])
   job.review = review
