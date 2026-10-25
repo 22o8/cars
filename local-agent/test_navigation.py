@@ -15,11 +15,12 @@ def snap(*nodes): return {'nodes':list(nodes),'truncated':False}
 class PolicyTests(unittest.TestCase):
  def test_navigator_label_is_not_ready(self):
   self.assertNotEqual(detect_state(snap(node(1,'tree item','رقم الإجراء الموحد',action=True)))['state'],'UNIFIED_PROCEDURE_OPEN')
- def test_ready_requires_active_frame_and_company_field(self):
+ def test_ready_requires_structural_company_field_not_active_flag(self):
   s=snap(node(1,'internal frame','رقم الإجراء الموحد',states=['showing','selected']),node(2,'label','رمز الشركة',1),node(3,'text','',1))
   self.assertEqual(plan(s)['operation'],'ready')
+  # Java 8 may omit selected/active on a visibly open frame; structure is the reliable signal.
   s['nodes'][0]['states']=['showing']
-  self.assertNotEqual(plan(s)['operation'],'ready')
+  self.assertEqual(plan(s)['operation'],'ready')
  def test_unknown_popup_overrides_ready(self):
   with self.assertRaises(NavigationError) as e:
    plan(snap(node(1,'alert','Delete?'),node(2,'push button','OK',1,action=True),node(3,'tree item','رقم الإجراء الموحد',action=True)))
@@ -189,6 +190,31 @@ class ExactReviewTargetTests(unittest.TestCase):
         text=Path(__file__).with_name('jab_helper.py').read_text(encoding='utf-8-sig')
         self.assertIn("'windowHwnd': int(window_hwnd)", text)
         self.assertIn("'windowMain': bool(window_main)", text)
+
+
+class VisibleFrameRegressionTests(unittest.TestCase):
+    def test_unselected_visible_declaration_is_reviewed(self):
+        s=snap(node(1,'internal frame','تفاصيل البيان - جديد',states=['showing','enabled'],bounds={'x':100,'y':80,'width':900,'height':650}))
+        self.assertEqual(detect_state(s)['state'],'DECLARATION_OPEN')
+
+    def test_unselected_visible_unknown_page_is_not_main(self):
+        s=snap(node(1,'internal frame','نافذة عمل',states=['showing','enabled'],bounds={'x':100,'y':80,'width':900,'height':650}))
+        self.assertEqual(detect_state(s)['state'],'OTHER_PAGE_OPEN')
+
+    def test_unified_page_can_be_ready_without_selected_state(self):
+        s=snap(
+            node(1,'internal frame','رقم الإجراء الموحد',states=['showing','enabled']),
+            node(2,'label','رمز الشركة',1),
+            node(3,'label','رقم الإجراء الموحد',1),
+            node(4,'text','',1,states=['showing','enabled'])
+        )
+        self.assertEqual(detect_state(s)['state'],'UNIFIED_PROCEDURE_OPEN')
+
+    def test_agent_fast_path_uses_double_click(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn('pyautogui.doubleClick', text)
+        self.assertIn("clicks=2", text)
+        self.assertIn("VERSION = '9.1.0-fast-doubleclick-review'", text)
 
 
 if __name__=='__main__': unittest.main()

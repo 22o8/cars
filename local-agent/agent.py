@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.0.0-production-unified-flow'
+VERSION = '9.1.0-fast-doubleclick-review'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -1067,7 +1067,7 @@ def _wait_for_completion_decision(job_id: str, review_id: str):
             time.sleep(1.0)
 
 
-def _click_live_node(node: dict) -> bool:
+def _click_live_node(node: dict, clicks: int = 1, interval: float = .04) -> bool:
     b = node.get('bounds') or {}
     try:
         x = int(b.get('x') or 0); y = int(b.get('y') or 0)
@@ -1080,15 +1080,21 @@ def _click_live_node(node: dict) -> bool:
     if not win:
         return False
     focus_window(win)
-    pyautogui.click(x + w // 2, y + h // 2)
+    cx, cy = x + w // 2, y + h // 2
+    if int(clicks) >= 2:
+        pyautogui.doubleClick(cx, cy, interval=max(.02, float(interval)))
+    else:
+        pyautogui.click(cx, cy)
     return True
 
 
 def _main_screen_live_click_fallback(job_id: str = '') -> bool:
-    """Fallback only for the clean ASYCUDA main screen.
+    """Ultra-fast live-bounds navigation for the clean ASYCUDA main screen.
 
-    It never uses stored desktop coordinates. The click target comes from the
-    live Java Access Bridge bounds of the named tree item.
+    This Iraqi Swing tree requires a double-click to open the Unified Procedure
+    folder and another double-click to open the Unified Procedure Number page.
+    Targets are read live from JAB on every attempt; no stored coordinates are
+    used.
     """
     current = HELPER.call('snapshot')
     if current.get('state') != 'MAIN_SCREEN':
@@ -1098,36 +1104,53 @@ def _main_screen_live_click_fallback(job_id: str = '') -> bool:
     folder_names = {norm('الإجراء الموحد'), norm('الاجراء الموحد'), norm('Unified Procedure')}
     page_names = {norm('رقم الإجراء الموحد'), norm('Unified Procedure Number')}
 
-    def matches(names):
-        return [n for n in visible_nodes if norm(n.get('name','')) in names and (n.get('bounds') or {}).get('width',0)]
+    def matches(source, names):
+        return [n for n in source if norm(n.get('name','')) in names and int((n.get('bounds') or {}).get('width',0) or 0) > 0]
 
-    pages = matches(page_names)
+    # If the page is already visible, open it immediately with the two clicks
+    # required by this client build.
+    pages = matches(visible_nodes, page_names)
     if pages:
-        _progress(job_id, 'fallback_open_unified_page', 'جاري فتح رقم الإجراء الموحد مباشرة...')
-        return _click_live_node(pages[0])
+        _progress(job_id, 'fast_open_unified_page', 'فتح رقم الإجراء الموحد...')
+        return _click_live_node(pages[0], clicks=2, interval=.035)
 
-    folders = matches(folder_names)
-    if folders:
-        _progress(job_id, 'fallback_expand_unified_folder', 'جاري فتح مجلد الإجراء الموحد...')
-        if not _click_live_node(folders[0]):
+    folders = matches(visible_nodes, folder_names)
+    if not folders:
+        return False
+
+    folder = folders[0]
+    _progress(job_id, 'fast_expand_unified_folder', 'فتح مجلد الإجراء الموحد...')
+    # Only double-click a collapsed folder. If accessibility already reports it
+    # expanded, leave it open and proceed straight to the child page.
+    if 'expanded' not in folder.get('states', []):
+        if not _click_live_node(folder, clicks=2, interval=.035):
             return False
-        time.sleep(.18)
+
+    # Poll at event-loop speed for the child to become visible. Maximum wait is
+    # ~0.6s, not a multi-second fixed delay.
+    for _ in range(12):
+        check_cancelled()
+        time.sleep(.05)
         refreshed = HELPER.call('snapshot')
+        state = str(refreshed.get('state') or '')
+        if state != 'MAIN_SCREEN':
+            # A popup/page appeared; the outer loop will review/handle it.
+            return True
         nodes2 = refreshed.get('snapshot', {}).get('nodes', [])
-        pages2 = [n for n in nodes2 if 'showing' in n.get('states', []) and norm(n.get('name','')) in page_names and (n.get('bounds') or {}).get('width',0)]
+        visible2 = [n for n in nodes2 if 'showing' in n.get('states', [])]
+        pages2 = matches(visible2, page_names)
         if pages2:
-            _progress(job_id, 'fallback_open_unified_page', 'جاري فتح رقم الإجراء الموحد...')
-            return _click_live_node(pages2[0])
-        return True
-    return False
+            _progress(job_id, 'fast_open_unified_page', 'فتح رقم الإجراء الموحد...')
+            return _click_live_node(pages2[0], clicks=2, interval=.035)
+    return True
 
 
 def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
-    """Burst through the known main-screen tree without fixed delays.
+    """Fast path from a confirmed clean main screen.
 
-    Every helper step takes a fresh JAB snapshot first, so a popup/modal that
-    appears between clicks immediately stops the burst and returns control to
-    the normal interactive-review loop.
+    Prefer live-bounds double-click navigation because this ASYCUDA tree opens
+    both the folder and document on double-click. JAB semantic actions remain
+    the secondary fallback.
     """
     review_states = {
         'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN',
@@ -1142,20 +1165,34 @@ def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
         native_modal = _find_asycuda_modal_window() if job_id else None
         if native_modal:
             return {'state': 'OS_MODAL_BLOCKER', 'operation': 'review'}
+        current = HELPER.call('snapshot')
+        state = str(current.get('state') or '')
+        if state in review_states or state == 'LOGIN':
+            return {'state': state, 'operation': 'review' if state in review_states else 'login'}
+        if state == 'UNIFIED_PROCEDURE_OPEN':
+            return {'state': state, 'operation': 'ready'}
+        if state == 'MAIN_SCREEN' and _main_screen_live_click_fallback(job_id):
+            # Re-read immediately; if the page is already open, finish in this
+            # same burst. Otherwise the next fast iteration continues.
+            time.sleep(.04)
+            verify = HELPER.call('snapshot')
+            vstate = str(verify.get('state') or '')
+            if vstate == 'UNIFIED_PROCEDURE_OPEN':
+                return {'state': vstate, 'operation': 'ready'}
+            if vstate in review_states:
+                return {'state': vstate, 'operation': 'review'}
+            last = {'state': vstate or 'MAIN_SCREEN', 'operation': 'click'}
+            continue
         result = HELPER.call('step')
         last = result
         state = str(result.get('state') or '')
         operation = str(result.get('operation') or 'wait')
         log('ASYCUDA fast path: ' + state + ' | operation=' + operation)
-        if state in review_states or state == 'LOGIN':
-            return result
-        if operation == 'ready':
+        if state in review_states or state == 'LOGIN' or operation == 'ready':
             return result
         if operation not in ('click', 'expand'):
             return result
-        # Swing tree expansion is normally visible almost immediately.  This is
-        # only a scheduler yield, not a fixed page-load wait.
-        time.sleep(.06)
+        time.sleep(.04)
     return last or {'state': 'MAIN_SCREEN', 'operation': 'wait'}
 
 
@@ -1566,7 +1603,7 @@ def heartbeat(stop):
     while not stop.is_set():
         try:
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate']}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate','visible-frame-review','doubleclick-fastpath']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code

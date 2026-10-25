@@ -74,19 +74,35 @@ def detect_state(snapshot):
         return {'state': 'UNKNOWN_POPUP', 'popup': popup['id'], 'target': target_for(popup, 'java_window' if popup.get('windowHwnd') and not popup.get('windowMain') else 'jab_popup')}
     if any(n['role'] == 'password text' for n in nodes):
         return {'state': 'LOGIN'}
-    frames = [n for n in nodes if n['role'] == 'internal frame' and ('selected' in n['states'] or 'active' in n['states'])]
+    # Do not require Swing to mark an internal frame selected/active. Iraqi
+    # ASYCUDA frequently leaves a visible declaration/document frame without
+    # those accessibility states. Any visible internal frame is therefore a
+    # real open page and must be reviewed instead of being mistaken for the
+    # clean main screen. Prefer active/selected frames first when there are
+    # several.
+    frames = [n for n in nodes if n['role'] == 'internal frame']
+    frames.sort(key=lambda n: 0 if ('selected' in n.get('states', []) or 'active' in n.get('states', [])) else 1)
     for frame in frames:
         content = subtree(nodes, frame)
-        title = norm(frame['name'])
-        if title in PAGE:
-            labels = {norm(n['name']) for n in content if n['role'] == 'label'}
-            if labels.intersection({norm('رمز الشركة'), 'company code'}) and any(n['role'] in ('text', 'combo box') and 'enabled' in n['states'] for n in content):
-                return {'state': 'UNIFIED_PROCEDURE_OPEN', 'frame': frame['id'], 'target': target_for(frame, 'internal_frame')}
-        if any(s in title for s in ('البيان المسبق', 'pre-declaration', 'pre declaration')):
+        title = norm(frame.get('name',''))
+        content_text = norm(' '.join(n.get('name','') for n in content if n.get('role') not in ('text','password text')))
+        labels = {norm(n.get('name','')) for n in content if n.get('role') == 'label'}
+        # Unified-procedure readiness is structural as well as title-based.
+        # This avoids confusing the navigator tree item with the opened page.
+        has_company = bool(labels.intersection({norm('رمز الشركة'), norm('company code')})) or norm('رمز الشركة') in content_text
+        has_unified_number = norm('رقم الإجراء الموحد') in content_text or title in PAGE
+        has_editable = any(n.get('role') in ('text','combo box') and 'enabled' in n.get('states', []) for n in content)
+        if has_company and has_unified_number and has_editable:
+            return {'state': 'UNIFIED_PROCEDURE_OPEN', 'frame': frame['id'], 'target': target_for(frame, 'internal_frame')}
+        if any(s in title or s in content_text for s in ('البيان المسبق', 'pre-declaration', 'pre declaration')):
             return {'state': 'PREDECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name',''), 'target': target_for(frame, 'internal_frame')}
+        if any(s in title or s in content_text for s in ('تفاصيل البيان', 'البيان الجمركي', 'بيان جمركي', 'declaration details')):
+            return {'state': 'DECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name',''), 'target': target_for(frame, 'internal_frame')}
+        # A generic title containing بيان is still considered a declaration,
+        # but only after the explicit unified-procedure test above.
         if any(s in title for s in ('بيان', 'declaration')):
             return {'state': 'DECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name',''), 'target': target_for(frame, 'internal_frame')}
-        if any(s in title for s in ('اشعار', 'الاشعارات', 'رسائل', 'صندوق البريد', 'notification', 'mailbox', 'message')):
+        if any(s in title or s in content_text for s in ('اشعار', 'الاشعارات', 'رسائل', 'صندوق البريد', 'notification', 'mailbox', 'message')):
             return {'state': 'NOTIFICATIONS_PAGE', 'frame': frame['id'], 'title': frame.get('name',''), 'target': target_for(frame, 'internal_frame')}
     if frames:
         return {'state': 'OTHER_PAGE_OPEN', 'frame': frames[0]['id'], 'title': frames[0].get('name',''), 'target': target_for(frames[0], 'internal_frame')}
