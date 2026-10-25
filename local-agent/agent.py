@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '8.0.0-exact-interactive-review'
+VERSION = '8.1.0-fast-main-navigation'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -949,6 +949,43 @@ def _wait_for_review_decision(job_id: str, review_id: str, state: str, metadata:
             time.sleep(1.5)
 
 
+def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
+    """Burst through the known main-screen tree without fixed delays.
+
+    Every helper step takes a fresh JAB snapshot first, so a popup/modal that
+    appears between clicks immediately stops the burst and returns control to
+    the normal interactive-review loop.
+    """
+    review_states = {
+        'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN',
+        'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP',
+        'MANUAL_INTERVENTION', 'UNKNOWN_SCREEN', 'OS_MODAL_BLOCKER'
+    }
+    last = None
+    for _ in range(max_steps):
+        check_cancelled()
+        if _security_dialog():
+            return {'state': 'SECURITY_WARNING', 'operation': 'wait'}
+        native_modal = _find_asycuda_modal_window() if job_id else None
+        if native_modal:
+            return {'state': 'OS_MODAL_BLOCKER', 'operation': 'review'}
+        result = HELPER.call('step')
+        last = result
+        state = str(result.get('state') or '')
+        operation = str(result.get('operation') or 'wait')
+        log('ASYCUDA fast path: ' + state + ' | operation=' + operation)
+        if state in review_states or state == 'LOGIN':
+            return result
+        if operation == 'ready':
+            return result
+        if operation not in ('click', 'expand'):
+            return result
+        # Swing tree expansion is normally visible almost immediately.  This is
+        # only a scheduler yield, not a fixed page-load wait.
+        time.sleep(.06)
+    return last or {'state': 'MAIN_SCREEN', 'operation': 'wait'}
+
+
 def ensure_unified_procedure_screen(job_id: str = ''):
     launch_asycuda()
     deadline = time.monotonic() + 600
@@ -1016,7 +1053,13 @@ def ensure_unified_procedure_screen(job_id: str = ''):
             skip_review_once = None
 
         try:
-            result = HELPER.call('step')
+            # When ASYCUDA is already on its clean main screen, navigate the
+            # document tree immediately.  Each burst step re-reads JAB first,
+            # so safety/review states still preempt navigation instantly.
+            if state == 'MAIN_SCREEN' and not skip_review_once:
+                result = _fast_main_navigation(job_id)
+            else:
+                result = HELPER.call('step')
             check_cancelled()
         except NavigationError as exc:
             if exc.code in ('unknown_popup', 'manual_intervention_required') and job_id:
@@ -1075,7 +1118,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
             login_deadline = time.monotonic() + 45
             while time.monotonic() < login_deadline:
                 check_cancelled()
-                time.sleep(.7)
+                time.sleep(.25)
                 try:
                     current = HELPER.call('snapshot')
                     if current.get('state') != 'LOGIN':
@@ -1113,7 +1156,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
                 previous, repeats = None, 0
                 continue
             raise NavigationError('navigation_stalled', 'تعذر الوصول إلى شاشة رقم الإجراء الموحد')
-        time.sleep(.25)
+        time.sleep(.08)
     raise NavigationError('navigation_timeout', 'تعذر الوصول إلى شاشة رقم الإجراء الموحد')
 
 def navigate_to_unified(job_id: str = ''):
@@ -1248,7 +1291,7 @@ def heartbeat(stop):
     while not stop.is_set():
         try:
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review']}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code
