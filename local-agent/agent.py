@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.1.0-fast-doubleclick-review'
+VERSION = '9.2.0-regression-safe-core'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -281,6 +281,25 @@ def _official_jnlp_source(jnlp_path: str | Path) -> tuple[bool, str]:
         return trusted, detail
     except Exception as exc:
         return False, f'JNLP validation failed: {type(exc).__name__}: {exc}'
+
+
+def _configured_official_jnlp() -> tuple[bool, str]:
+    """Validate the currently configured JNLP without launching it.
+
+    This is used by every Security Warning guard, including warnings left from
+    an immediately previous Java Web Start attempt. It keeps the auto-accept
+    invariant tied to the official HTTPS ASYCUDA launcher.
+    """
+    try:
+        asy = CFG.get('asycuda', {})
+        jnlp = str(asy.get('jnlp_path') or '')
+        if jnlp and not os.path.isabs(jnlp):
+            jnlp = str((BASE / jnlp).resolve())
+        if not jnlp or not Path(jnlp).exists():
+            return False, 'configured JNLP is missing'
+        return _official_jnlp_source(jnlp)
+    except Exception as exc:
+        return False, f'configured JNLP validation failed: {type(exc).__name__}: {exc}'
 
 
 def _security_dialog():
@@ -580,13 +599,11 @@ def launch_asycuda():
     if not jnlp or not Path(jnlp).exists():
         raise RuntimeError('AWIQWorld.jnlp path is invalid in config.json.')
 
-    # Never auto-accept a Java warning that was already on screen before this job.
+    # Security Warning is a mandatory first-class step in every job. A warning
+    # can remain visible from the immediately previous Java Web Start attempt.
+    # If our configured launcher is the verified official ASYCUDA JNLP, accept
+    # that warning before launching another instance instead of failing the job.
     preexisting_warning, _ = _security_dialog()
-    if preexisting_warning is not None:
-        raise NavigationError(
-            'manual_intervention_required',
-            'A Java Security Warning was already open before ASYCUDA launch. Close it manually, then retry.'
-        )
 
     trusted_jnlp, trust_detail = _official_jnlp_source(jnlp)
     if not trusted_jnlp:
@@ -594,6 +611,18 @@ def launch_asycuda():
             'manual_intervention_required',
             'The configured JNLP is not the verified HTTPS asy.mof.gov.iq launcher. ' + trust_detail
         )
+
+    if preexisting_warning is not None:
+        log('Verified official Java Security Warning already visible; accepting it before continuing...')
+        _click_security_warning_if_present(12, trusted_launch=True)
+        try:
+            win = _wait_for_asycuda_window(18)
+            focus_window(win)
+            return True
+        except Exception:
+            # The old warning may have belonged to a launch that did not finish.
+            # Continue by launching the same verified JNLP once.
+            pass
 
     log('Launching ASYCUDA from verified official JNLP...')
     if launcher:
@@ -848,7 +877,7 @@ def _send_review(job_id: str, state: str, metadata: dict | None = None):
             break
         except Exception as exc:
             last_error = exc
-            time.sleep(1.5)
+            time.sleep(.55)
     if response is None or not response.ok:
         raise NavigationError('review_upload_failed', f'تعذر رفع صورة المراجعة إلى النظام: {last_error or "network error"}')
     review = response.json().get('review') or {}
@@ -1206,14 +1235,19 @@ def ensure_unified_procedure_screen(job_id: str = ''):
     while time.monotonic() < deadline:
         check_cancelled()
         if _security_dialog():
-            _click_security_warning_if_present(10)
+            trusted_warning, warning_detail = _configured_official_jnlp()
+            if not trusted_warning:
+                raise NavigationError('manual_intervention_required', 'Security Warning appeared but official JNLP validation failed: ' + warning_detail)
+            _click_security_warning_if_present(12, trusted_launch=True)
+            previous, repeats = None, 0
+            continue
         try:
             current = HELPER.call('snapshot')
             state = str(current.get('state') or 'LOADING')
         except NavigationError as exc:
             if exc.code not in ('jab_unavailable', 'helper_unavailable'):
                 raise
-            time.sleep(.5)
+            time.sleep(.18)
             continue
 
         # Native Java modal watchdog. Old Java 8 can place JOptionPane in a
@@ -1280,7 +1314,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
                 continue
             if exc.code not in ('jab_unavailable', 'helper_unavailable'):
                 raise
-            time.sleep(.5)
+            time.sleep(.18)
             continue
         # If the clean main screen is readable but the tree item has no JAB
         # action, click the exact live bounds of the named element. This is the
@@ -1603,7 +1637,7 @@ def heartbeat(stop):
     while not stop.is_set():
         try:
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate','visible-frame-review','doubleclick-fastpath']}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate','visible-frame-review','doubleclick-fastpath','security-warning-regression-guard','review-every-open-page']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code

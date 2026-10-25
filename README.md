@@ -18,3 +18,7 @@ Real unified-procedure execution is enabled for explicit `execute` jobs. Test jo
 
 ## v13.1
 Visible internal frames are always reviewed; clean-main navigation uses live JAB bounds with fast double-clicks for the Unified Procedure folder and page.
+
+
+## v13.2 Regression Safe Core
+Security Warning, interactive review, fast navigation, and production execution are treated as mandatory core invariants.

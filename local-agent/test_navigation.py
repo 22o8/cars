@@ -214,7 +214,33 @@ class VisibleFrameRegressionTests(unittest.TestCase):
         text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
         self.assertIn('pyautogui.doubleClick', text)
         self.assertIn("clicks=2", text)
-        self.assertIn("VERSION = '9.1.0-fast-doubleclick-review'", text)
+        self.assertIn("VERSION = '9.2.0-regression-safe-core'", text)
+
+
+
+class CoreInvariantRegressionTests(unittest.TestCase):
+    def test_security_warning_is_mandatory_and_trusted_in_navigation_loop(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn("_configured_official_jnlp()", text)
+        self.assertIn("_click_security_warning_if_present(12, trusted_launch=True)", text)
+        self.assertNotIn("A Java Security Warning was already open before ASYCUDA launch. Close it manually", text)
+
+    def test_preexisting_verified_security_warning_is_auto_accepted(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn("Verified official Java Security Warning already visible; accepting it before continuing", text)
+        self.assertIn("preexisting_warning is not None", text)
+
+    def test_every_visible_internal_page_can_enter_review(self):
+        for title in ('تفاصيل البيان - جديد','البيان المسبق','صندوق البريد','نافذة عمل'):
+            s=snap(node(1,'internal frame',title,states=['showing','enabled'],bounds={'x':100,'y':80,'width':900,'height':650}))
+            self.assertIn(detect_state(s)['state'], {'DECLARATION_OPEN','PREDECLARATION_OPEN','NOTIFICATIONS_PAGE','OTHER_PAGE_OPEN'})
+
+    def test_fast_path_and_production_flow_are_kept(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn('pyautogui.doubleClick', text)
+        self.assertIn("HELPER.call('set_company_code'", text)
+        self.assertIn("pyautogui.press('enter')", text)
+        self.assertIn("PROCEDURE_CREATED_WAITING_COMPLETION", text)
 
 
 if __name__=='__main__': unittest.main()
