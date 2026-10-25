@@ -17,7 +17,7 @@ import pygetwindow as gw
 import requests
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 import threading
 import atexit
@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.2.0-regression-safe-core'
+VERSION = '9.3.0-verified-full-flow'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -1225,6 +1225,113 @@ def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
     return last or {'state': 'MAIN_SCREEN', 'operation': 'wait'}
 
 
+def _live_bounds(bounds: dict | None):
+    b = bounds or {}
+    try:
+        x=int(b.get('x') or 0); y=int(b.get('y') or 0)
+        w=int(b.get('width') or 0); h=int(b.get('height') or 0)
+    except Exception:
+        return None
+    if w < 4 or h < 4:
+        return None
+    return x, y, w, h
+
+
+def _type_live_field(bounds: dict | None, value: str, *, interval: float = .018) -> bool:
+    rect = _live_bounds(bounds)
+    if not rect:
+        return False
+    x,y,w,h = rect
+    win = find_asycuda_window()
+    if win:
+        focus_window(win)
+    pyautogui.click(x+w//2, y+h//2)
+    pyautogui.hotkey('ctrl','a')
+    pyautogui.write(str(value), interval=max(.005,float(interval)))
+    return True
+
+
+def _force_fill_login_fields(response: dict, username: str, password: str) -> bool:
+    """Make the login visible on-screen, not only updated in Swing's model."""
+    ub = response.get('usernameBounds') or {}
+    pb = response.get('passwordBounds') or {}
+    if not _type_live_field(ub, username):
+        return False
+    if not _type_live_field(pb, password):
+        return False
+    return True
+
+
+def _login_state(timeout: float = 1.0):
+    deadline = time.monotonic() + max(.2,float(timeout))
+    last = None
+    while time.monotonic() < deadline:
+        check_cancelled()
+        try:
+            last = HELPER.call('snapshot')
+            if last.get('state') != 'LOGIN':
+                return last
+        except NavigationError as exc:
+            if exc.code not in ('jab_unavailable','helper_unavailable'):
+                raise
+        time.sleep(.12)
+    return last
+
+
+def _window_probe_image():
+    win = find_asycuda_window()
+    if not win or win.isMinimized:
+        return None
+    img = pyautogui.screenshot(region=(int(win.left),int(win.top),int(win.width),int(win.height))).convert('L')
+    # Small grayscale copy is fast and stable enough for response-change detection.
+    w = 360
+    h = max(1, int(img.height * (w / max(1,img.width))))
+    return img.resize((w,h))
+
+
+def _visual_delta(before, after) -> float:
+    if before is None or after is None or before.size != after.size:
+        return 999.0 if before is not after else 0.0
+    diff = ImageChops.difference(before, after)
+    stat = ImageStat.Stat(diff)
+    return float(stat.mean[0] if stat.mean else 0.0)
+
+
+def _wait_for_creation_result(before_image, timeout: float = 15.0):
+    """Wait until creation has observable proof; never treat a static screen as success."""
+    deadline = time.monotonic() + max(3.0,float(timeout))
+    last = None
+    best_delta = 0.0
+    while time.monotonic() < deadline:
+        check_cancelled()
+        time.sleep(.20)
+        # A new native modal is a real server/UI response.
+        modal = _find_asycuda_modal_window()
+        if modal:
+            return {'ready':True,'reason':'modal','procedureNo':'','snapshot':last,'visualDelta':best_delta}
+        try:
+            result = HELPER.call('read_unified_result')
+            number = ''.join(ch for ch in str(result.get('procedureNo') or '') if ch.isdigit())
+            if number:
+                return {'ready':True,'reason':'procedure_number','procedureNo':number,'snapshot':last,'visualDelta':best_delta}
+        except NavigationError as exc:
+            if exc.code not in ('result_field_not_found','jab_unavailable','helper_unavailable','unified_screen_not_ready'):
+                raise
+        try:
+            last = HELPER.call('snapshot')
+            if last.get('state') not in ('UNIFIED_PROCEDURE_OPEN','LOADING'):
+                return {'ready':True,'reason':'state_changed','procedureNo':'','snapshot':last,'visualDelta':best_delta}
+        except NavigationError as exc:
+            if exc.code not in ('jab_unavailable','helper_unavailable'):
+                raise
+        delta = _visual_delta(before_image, _window_probe_image())
+        best_delta = max(best_delta, delta)
+        # Company validation may repaint a tiny area; require a meaningful change.
+        if delta >= 1.15:
+            return {'ready':True,'reason':'visual_change','procedureNo':'','snapshot':last,'visualDelta':delta}
+    return {'ready':False,'reason':'timeout','procedureNo':'','snapshot':last,'visualDelta':best_delta}
+
+
 def ensure_unified_procedure_screen(job_id: str = ''):
     launch_asycuda()
     deadline = time.monotonic() + 600
@@ -1356,37 +1463,50 @@ def ensure_unified_procedure_screen(job_id: str = ''):
             response = HELPER.call('step', credentials={'username': username, 'password': password})
             if response.get('operation') != 'login_filled':
                 raise NavigationError('login_failed', 'تعذر تجهيز حقول تسجيل الدخول في الأسيكودا')
+
+            # JAB updates the Swing model first. Then type into the exact live
+            # username/password bounds so the values are definitely visible and
+            # committed in this Java 8 client build.
+            if not _force_fill_login_fields(response, username, password):
+                raise NavigationError('login_failed', 'تم العثور على شاشة الدخول لكن تعذر الكتابة داخل حقول الحساب')
+            log('ASYCUDA username/password written into the live login fields.')
+
             submitted = False
             try:
                 submit = HELPER.call('submit_login')
                 if submit.get('operation') in ('login_submitted', 'login_already_left'):
                     submitted = True
-                    log('ASYCUDA Login action sent through Java Access Bridge.')
+                    log('ASYCUDA Login check button activated through Java Access Bridge.')
             except NavigationError as exc:
                 if exc.code not in ('login_submit_ambiguous', 'jab_unavailable', 'helper_unavailable'):
                     raise
-                log('JAB Login button fallback unavailable; using default Enter action.')
             if not submitted:
-                win = find_asycuda_window()
-                if win:
-                    focus_window(win)
+                # Password field is the last live field we focused, therefore
+                # Enter activates Swing's default green-check login action.
                 pyautogui.press('enter')
-                log('ASYCUDA credentials filled; default Enter Login action sent.')
+                log('ASYCUDA Login action sent through the live password field.')
+
             login_sent = True
-            login_deadline = time.monotonic() + 45
-            while time.monotonic() < login_deadline:
-                check_cancelled()
-                time.sleep(.25)
+            current = _login_state(4.0)
+            if current and current.get('state') == 'LOGIN':
+                # One controlled retry covers focus races after Java finishes
+                # loading the login dialog. Never wait 45 seconds on a dead step.
+                log('Login screen still visible; retrying live field entry once.')
+                response = HELPER.call('step', credentials={'username': username, 'password': password})
+                if response.get('operation') != 'login_filled' or not _force_fill_login_fields(response, username, password):
+                    raise NavigationError('login_failed', 'تعذر إعادة كتابة بيانات تسجيل الدخول')
                 try:
-                    current = HELPER.call('snapshot')
-                    if current.get('state') != 'LOGIN':
-                        log('ASYCUDA login accepted; continuing navigation.')
-                        break
-                except NavigationError as exc:
-                    if exc.code not in ('jab_unavailable', 'helper_unavailable'):
-                        raise
-            else:
-                raise NavigationError('login_failed', 'بقيت شاشة تسجيل الدخول مفتوحة بعد إرسال بيانات الحساب. تحقق من اسم المستخدم وكلمة المرور.')
+                    submit = HELPER.call('submit_login')
+                    submitted = submit.get('operation') in ('login_submitted','login_already_left')
+                except NavigationError:
+                    submitted = False
+                if not submitted:
+                    pyautogui.press('enter')
+                current = _login_state(8.0)
+            if current and current.get('state') == 'LOGIN':
+                raise NavigationError('login_failed', 'بقيت شاشة تسجيل الدخول مفتوحة بعد كتابة الحساب والضغط على دخول. تحقق من اسم المستخدم وكلمة المرور.')
+            log('ASYCUDA login accepted; continuing immediately to Unified Procedure.')
+            previous, repeats = None, 0
             continue
         marker = (result['state'], operation, result.get('target'))
         repeats = repeats + 1 if marker == previous else 0
@@ -1462,27 +1582,22 @@ def create_unified_procedure(job):
     check_cancelled()
 
     _progress(job_id, 'creating_procedure', 'تم تثبيت رمز الشركة. جاري إنشاء رقم الإجراء الموحد...')
+    before_create = _window_probe_image()
     _submit_unified_action()
 
-    # Wait briefly for the generated number / completion dialog to render. No
-    # production confirmation is clicked here.
-    deadline=time.monotonic()+8.0
-    last=None
-    while time.monotonic()<deadline:
-        check_cancelled()
-        time.sleep(.25)
-        try:
-            last=HELPER.call('snapshot')
-            # A popup/dialog or a changed visible state means the server response
-            # has arrived. If the page stays open, the generated number may simply
-            # have appeared in its result field; either case is ready for review.
-            if last.get('state') != 'LOADING':
-                break
-        except NavigationError as exc:
-            if exc.code not in ('jab_unavailable','helper_unavailable'):
-                raise
+    proof = _wait_for_creation_result(before_create, 15.0)
+    if not proof.get('ready'):
+        raise NavigationError('procedure_creation_unverified', 'تم الضغط على إنشاء لكن لم يظهر رقم أو نتيجة جديدة خلال المهلة. لم يعتبر النظام العملية ناجحة.')
+    last = proof.get('snapshot') or {}
+    procedure_no = ''.join(ch for ch in str(proof.get('procedureNo') or '') if ch.isdigit())
+    log('Unified procedure creation response verified: ' + str(proof.get('reason') or 'unknown'))
 
-    metadata = _review_metadata(last or {}, 'PROCEDURE_CREATED_WAITING_COMPLETION', {'companyCode': code})
+    metadata = _review_metadata(last or {}, 'PROCEDURE_CREATED_WAITING_COMPLETION', {
+        'companyCode': code,
+        'procedureNo': procedure_no,
+        'verification': str(proof.get('reason') or ''),
+        'visualDelta': float(proof.get('visualDelta') or 0.0),
+    })
     review_id = _send_review(job_id, 'PROCEDURE_CREATED_WAITING_COMPLETION', metadata)
     _progress(job_id, 'procedure_created_waiting_completion', 'تم إنشاء رقم الإجراء ورفع صورة النتيجة. بانتظار قرارك لإنجاز الرقم.')
     _wait_for_completion_decision(job_id, review_id)
@@ -1507,7 +1622,7 @@ def create_unified_procedure(job):
     return {
         'statusCode':'PROCEDURE_COMPLETED',
         'message':'تم إنشاء رقم الإجراء الموحد وتأكيد إنجازه بنجاح.',
-        'unifiedProcedureNo':'',
+        'unifiedProcedureNo':procedure_no,
         'whatsappSent':False,
         'screenshotTaken':True,
         'screenshotName':final_path.name,
@@ -1637,7 +1752,7 @@ def heartbeat(stop):
     while not stop.is_set():
         try:
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate','visible-frame-review','doubleclick-fastpath','security-warning-regression-guard','review-every-open-page']}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate','visible-frame-review','doubleclick-fastpath','security-warning-regression-guard','review-every-open-page','verified-live-login','verified-creation-result']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code

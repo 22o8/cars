@@ -144,7 +144,9 @@ class SmartLoginRegressionTests(unittest.TestCase):
         text = Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
         self.assertIn("HELPER.call('submit_login')", text)
         self.assertIn("pyautogui.press('enter')", text)
-        self.assertIn("current.get('state') != 'LOGIN'", text)
+        self.assertIn("_force_fill_login_fields", text)
+        self.assertIn("_login_state(4.0)", text)
+        self.assertIn("current.get('state') == 'LOGIN'", text)
         self.assertIn("'login_failed'", text)
 
     def test_helper_login_submit_is_login_scoped_and_fail_closed(self):
@@ -214,7 +216,21 @@ class VisibleFrameRegressionTests(unittest.TestCase):
         text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
         self.assertIn('pyautogui.doubleClick', text)
         self.assertIn("clicks=2", text)
-        self.assertIn("VERSION = '9.2.0-regression-safe-core'", text)
+        self.assertIn("VERSION = '9.3.0-verified-full-flow'", text)
+
+
+
+class VerifiedFullFlowRegressionTests(unittest.TestCase):
+    def test_helper_returns_live_login_bounds(self):
+        text=Path(__file__).with_name('jab_helper.py').read_text(encoding='utf-8-sig')
+        self.assertIn("action['usernameBounds']", text)
+        self.assertIn("action['passwordBounds']", text)
+
+    def test_creation_waits_for_observable_result(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn('_wait_for_creation_result', text)
+        self.assertIn("HELPER.call('read_unified_result')", text)
+        self.assertIn("procedure_creation_unverified", text)
 
 
 

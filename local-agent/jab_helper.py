@@ -165,6 +165,35 @@ class Session:
                     filled=False
             return {'operation':'company_code_filled','target':target['id'],'bounds':target.get('bounds') or {},'companyCode':code,'filledByJab':filled,'role':target.get('role','')}
 
+        if request['command'] == 'read_unified_result':
+            if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
+                raise NavigationError('unified_screen_not_ready', 'شاشة رقم الإجراء الموحد ليست جاهزة لقراءة النتيجة')
+            nodes=snapshot['nodes']; frame_id=state_info.get('frame')
+            frame=next((n for n in nodes if n.get('id') == str(frame_id)), None)
+            scope=subtree(nodes, frame) if frame else nodes
+            labels=[n for n in scope if n.get('role')=='label' and norm('رقم الإجراء الموحد') in norm(n.get('name',''))]
+            fields=[n for n in scope if n.get('role') in ('text','editable text') and visible(n) and 'enabled' in n.get('states',[])]
+            if not labels or not fields:
+                raise NavigationError('result_field_not_found','تعذر تحديد خانة رقم الإجراء الموحد')
+            def center(n):
+                b=n.get('bounds') or {}; return (int(b.get('x',0))+int(b.get('width',0))//2,int(b.get('y',0))+int(b.get('height',0))//2)
+            lx,ly=center(labels[0])
+            ranked=sorted(fields,key=lambda n:(abs(center(n)[1]-ly)*5+abs(center(n)[0]-lx)))
+            target=ranked[0]
+            el=self.elements.get(target['id'])
+            raw=''
+            if el is not None:
+                try: raw=str(el.name or '')
+                except Exception: raw=''
+                if not raw:
+                    try: raw=str(el.description or '')
+                    except Exception: raw=''
+            digits=''.join(ch for ch in raw if ch.isdigit())
+            # A company code can also be numeric, so only accept a value close to
+            # the actual unified-number label and not identical to the company code
+            # field selected elsewhere.
+            return {'operation':'result_read','procedureNo':digits,'bounds':target.get('bounds') or {}}
+
         if request['command'] == 'submit_unified_procedure':
             if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
                 raise NavigationError('unified_screen_not_ready', 'شاشة رقم الإجراء الموحد ليست جاهزة للتنفيذ')
@@ -294,6 +323,10 @@ class Session:
             self.elements[users[0]['id']].send_text(creds['username'], wait_for_text_update=False)
             self.elements[passwords[0]['id']].send_text(creds['password'], wait_for_text_update=False)
             action['operation'] = 'login_filled'
+            action['usernameBounds'] = dict(users[0].get('bounds') or {})
+            action['passwordBounds'] = dict(passwords[0].get('bounds') or {})
+            action['usernameTarget'] = str(users[0].get('id') or '')
+            action['passwordTarget'] = str(passwords[0].get('id') or '')
         return action
 
     def close(self):
