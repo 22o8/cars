@@ -137,6 +137,91 @@ class Session:
         state_info = detect_state(snapshot)
         if request['command'] == 'snapshot':
             return {'snapshot': snapshot, **state_info}
+        if request['command'] == 'set_company_code':
+            if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
+                raise NavigationError('unified_screen_not_ready', 'شاشة رقم الإجراء الموحد ليست جاهزة لإدخال رمز الشركة')
+            code = ''.join(ch for ch in str(request.get('company_code') or '') if ch.isdigit())
+            if not code or len(code) > 20:
+                raise NavigationError('invalid_company_code', 'رمز الشركة غير صالح')
+            nodes = snapshot['nodes']
+            frame_id = state_info.get('frame')
+            frame = next((n for n in nodes if n.get('id') == str(frame_id)), None)
+            scope = subtree(nodes, frame) if frame else nodes
+            labels = [n for n in scope if n.get('role') == 'label' and norm(n.get('name','')) in {norm('رمز الشركة'), norm('Company code')}]
+            fields = [n for n in scope if n.get('role') in ('text','editable text','combo box') and visible(n) and 'enabled' in n.get('states', []) and ('editable' in n.get('states', []) or n.get('role')=='combo box')]
+            if not labels or not fields:
+                raise NavigationError('company_field_not_found', 'تعذر تحديد خانة رمز الشركة داخل شاشة الإجراء الموحد')
+            def center(n):
+                b=n.get('bounds') or {}; return (int(b.get('x',0))+int(b.get('width',0))//2, int(b.get('y',0))+int(b.get('height',0))//2)
+            lx,ly=center(labels[0])
+            ranked=sorted(fields, key=lambda n: (abs(center(n)[1]-ly)*4 + abs(center(n)[0]-lx)))
+            target=ranked[0]
+            filled=False
+            if target.get('role') != 'combo box':
+                try:
+                    self.elements[target['id']].send_text(code, wait_for_text_update=False)
+                    filled=True
+                except Exception:
+                    filled=False
+            return {'operation':'company_code_filled','target':target['id'],'bounds':target.get('bounds') or {},'companyCode':code,'filledByJab':filled,'role':target.get('role','')}
+
+        if request['command'] == 'submit_unified_procedure':
+            if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
+                raise NavigationError('unified_screen_not_ready', 'شاشة رقم الإجراء الموحد ليست جاهزة للتنفيذ')
+            nodes=snapshot['nodes']; frame_id=state_info.get('frame')
+            frame=next((n for n in nodes if n.get('id') == str(frame_id)), None)
+            scope=subtree(nodes, frame) if frame else nodes
+            # Prefer a semantically named validation/create button if this build exposes one.
+            semantic=[]
+            good_terms=tuple(norm(x) for x in ('تحقق','تأكيد','انشاء','إنشاء','تنفيذ','Validate','Verify','Create','Execute','OK'))
+            bad_terms=tuple(norm(x) for x in ('مساعدة','بحث','عرض','Help','Search','View','Cancel','الغاء','إلغاء'))
+            for n in scope:
+                if n.get('role')!='push button' or not visible(n) or 'enabled' not in n.get('states',[]) or not n.get('action'): continue
+                text=norm((n.get('name') or '')+' '+(n.get('description') or ''))
+                if text and any(t in text for t in good_terms) and not any(t in text for t in bad_terms): semantic.append(n)
+            if len(semantic)==1:
+                self.elements[semantic[0]['id']].click(simulate=False)
+                return {'operation':'procedure_submitted','method':'semantic_button'}
+            # Iraqi ASYCUDA commonly exposes the toolbar icons without names. On the
+            # Unified Procedure internal frame the blue check is the second icon from
+            # the right in the compact top toolbar. Require a tight horizontal icon
+            # row before applying this structural rule.
+            fb=(frame or {}).get('bounds') or {}
+            fy=int(fb.get('y',0)); fh=max(1,int(fb.get('height',0))); fx=int(fb.get('x',0)); fw=max(1,int(fb.get('width',0)))
+            icons=[]
+            for n in scope:
+                if n.get('role')!='push button' or not visible(n) or 'enabled' not in n.get('states',[]) or not n.get('action'): continue
+                b=n.get('bounds') or {}; x=int(b.get('x',0)); y=int(b.get('y',0)); w=int(b.get('width',0)); h=int(b.get('height',0))
+                if 8 <= w <= 70 and 8 <= h <= 70 and fy <= y <= fy + max(90, int(fh*.18)):
+                    icons.append(n)
+            icons=sorted(icons,key=lambda n:int((n.get('bounds') or {}).get('x',0)))
+            if 3 <= len(icons) <= 8:
+                candidate=icons[-2]
+                self.elements[candidate['id']].click(simulate=False)
+                return {'operation':'procedure_submitted','method':'structural_second_from_right','target':candidate['id'],'bounds':candidate.get('bounds') or {}}
+            raise NavigationError('submit_button_not_found', f'تعذر تحديد زر تنفيذ الإجراء الموحد بأمان (toolbarButtons={len(icons)})')
+
+        if request['command'] == 'affirm_current_popup':
+            nodes=snapshot['nodes']
+            popup_nodes=[n for n in nodes if visible(n) and (n.get('role') in ('alert','dialog','option pane') or 'modal' in n.get('states',[]))]
+            scope=nodes
+            if popup_nodes:
+                scope=subtree(nodes,popup_nodes[0])
+            buttons=[n for n in scope if n.get('role')=='push button' and visible(n) and 'enabled' in n.get('states',[]) and n.get('action')]
+            # Completion dialogs in this Iraqi build show X on the left and the
+            # affirmative check on the right. Use only after an explicit user
+            # confirmation from the web UI and only when exactly two aligned buttons exist.
+            if len(buttons)!=2:
+                raise NavigationError('final_confirmation_ambiguous', f'تعذر تحديد زر التأكيد النهائي بأمان (buttons={len(buttons)})')
+            def box(n):
+                b=n.get('bounds') or {}; return (int(b.get('x',0)),int(b.get('y',0)),int(b.get('width',0)),int(b.get('height',0)))
+            buttons=sorted(buttons,key=lambda n:box(n)[0])
+            l,r=buttons[0],buttons[1]; lx,ly,lw,lh=box(l); rx,ry,rw,rh=box(r)
+            if abs(ly-ry)>max(12,max(lh,rh)//2):
+                raise NavigationError('final_confirmation_ambiguous','تغير ترتيب أزرار نافذة التأكيد النهائي')
+            self.elements[r['id']].click(simulate=False)
+            return {'operation':'final_confirmation_clicked','target':r['id'],'bounds':r.get('bounds') or {}}
+
         if request['command'] == 'submit_login':
             # This ASYCUDA Java 8 build exposes the login/cancel controls as two
             # unnamed icon-only Swing buttons. Identify the login control only

@@ -17,7 +17,7 @@ function headers(){ return { 'X-Tarabil-Mobile-Pin': mobilePin.value.trim() } }
 function fmt(iso?:string){ if(!iso) return ''; try { return new Date(iso).toLocaleString('ar-IQ') } catch { return iso } }
 function statusLabel(s?:string){ return ({pending:'بانتظار الجهاز',processing:'جاري التنفيذ',needs_review:'بانتظار قرارك',cancelling:'جاري الإيقاف',done:'مكتمل',failed:'فشل',cancelled:'تم الإيقاف'} as any)[s || ''] || s || '' }
 function reviewStateLabel(s?:string){
-  const map:any={OS_MODAL_BLOCKER:'نافذة Java فوق ASYCUDA',NOTIFICATIONS_POPUP:'نافذة إشعارات',NOTIFICATIONS_PAGE:'صفحة الإشعارات/الرسائل',OTHER_PAGE_OPEN:'صفحة أخرى مفتوحة',PREDECLARATION_OPEN:'بيان مسبق مفتوح',DECLARATION_OPEN:'بيان مفتوح',UNKNOWN_POPUP:'نافذة غير معروفة',MANUAL_INTERVENTION:'شاشة تحتاج مراجعة',UNKNOWN_SCREEN:'شاشة غير متوقعة'}
+  const map:any={OS_MODAL_BLOCKER:'نافذة Java فوق ASYCUDA',NOTIFICATIONS_POPUP:'نافذة إشعارات',NOTIFICATIONS_PAGE:'صفحة الإشعارات/الرسائل',OTHER_PAGE_OPEN:'صفحة أخرى مفتوحة',PREDECLARATION_OPEN:'بيان مسبق مفتوح',DECLARATION_OPEN:'بيان مفتوح',UNKNOWN_POPUP:'نافذة غير معروفة',MANUAL_INTERVENTION:'شاشة تحتاج مراجعة',UNKNOWN_SCREEN:'شاشة غير متوقعة',PROCEDURE_CREATED_WAITING_COMPLETION:'تم إنشاء الرقم — بانتظار الإنجاز',FINAL_CONFIRMATION_FAILED:'تعذر تأكيد الإنجاز'}
   return map[s || ''] || s || 'شاشة غير متوقعة'
 }
 async function unlockDetails(){
@@ -80,7 +80,7 @@ function closeHistoryScreenshot(){
   historyScreenshotUrl.value=''; historyScreenshotTitle.value=''
 }
 
-async function decide(action:'dismiss_and_resume'|'keep_and_stop'|'resume'|'stop'){
+async function decide(action:'dismiss_and_resume'|'keep_and_stop'|'resume'|'stop'|'finalize_and_complete'){
   busy.value=true
   try{
     await $fetch(`/api/unified/jobs/${id}/review-decision`, { method:'POST', headers:headers(), body:{action} })
@@ -141,8 +141,9 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
     </section>
 
     <section v-if="job.status==='needs_review' && job.review" class="card review-notice">
-      <strong>الطلب متوقف مؤقتاً بانتظار قرارك</strong>
-      <p>ظهرت شاشة داخل ASYCUDA أثناء الوصول إلى رقم الإجراء الموحد. راجع الصورة أدناه ثم اختر إما إغلاق الصفحة المفتوحة والمتابعة، أو إيقاف الطلب الحالي.</p>
+      <strong>{{job.review.state==='PROCEDURE_CREATED_WAITING_COMPLETION'?'تم إنشاء رقم الإجراء — بانتظار قرار الإنجاز':'الطلب متوقف مؤقتاً بانتظار قرارك'}}</strong>
+      <p v-if="job.review.state==='PROCEDURE_CREATED_WAITING_COMPLETION'">راجع رقم الإجراء في الصورة. إذا تريد إنهاء العملية اضغط «نعم، أنجز رقم الإجراء». إذا تريد الانتظار اترك الطلب كما هو.</p>
+      <p v-else>ظهرت شاشة داخل ASYCUDA أثناء الوصول إلى رقم الإجراء الموحد. راجع الصورة أدناه ثم اختر إما إغلاق الصفحة المفتوحة والمتابعة، أو إيقاف الطلب الحالي.</p>
     </section>
 
     <section v-if="job.review" class="card review-card">
@@ -158,8 +159,14 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
       <div v-if="reviewScreenshotUrl" class="shot-wrap"><img :src="reviewScreenshotUrl" alt="لقطة شاشة ASYCUDA"></div>
       <div v-else class="shot-empty">لا توجد صورة متاحة لهذه الحالة.</div>
       <div v-if="job.status==='needs_review'" class="decision-actions">
-        <button class="btn primary" :disabled="busy" @click="decide('dismiss_and_resume')">إغلاق نفس الصفحة ومتابعة إلى رقم الإجراء الموحد</button>
-        <button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف الطلب وإبقاء الشاشة كما هي</button>
+        <template v-if="job.review.state==='PROCEDURE_CREATED_WAITING_COMPLETION'">
+          <button class="btn primary" :disabled="busy" @click="decide('finalize_and_complete')">نعم، أنجز رقم الإجراء</button>
+          <button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف الطلب وإبقاء الصفحة مفتوحة</button>
+        </template>
+        <template v-else>
+          <button class="btn primary" :disabled="busy" @click="decide('dismiss_and_resume')">إغلاق نفس الصفحة ومتابعة إلى رقم الإجراء الموحد</button>
+          <button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف الطلب وإبقاء الشاشة كما هي</button>
+        </template>
       </div>
     </section>
 

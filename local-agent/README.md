@@ -74,3 +74,6 @@ Old Oracle Java 8 can display `Location: https://asy.mof.gov.iq` visually while 
 
 ## v8.8 Interactive Review
 راجع `INTERACTIVE-REVIEW-AR.md`.
+
+## v13 production flow
+Version `9.0.0-production-unified-flow` adds explicit production execution. Test mode remains non-destructive. Main-screen mouse fallback uses live Java Access Bridge bounds only; no stored desktop coordinates are required for normal navigation.

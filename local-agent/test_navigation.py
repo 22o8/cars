@@ -48,19 +48,21 @@ class PolicyTests(unittest.TestCase):
   self.assertEqual(calls,{'check_cancelled','ensure_unified_procedure_screen','take_screenshot','NavigationError'})
  def _isolated_job_functions(self):
   tree=ast.parse(Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig'))
-  wanted=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('create_unified_procedure','run_job')]
+  wanted=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run_job']
   module=ast.Module(body=wanted,type_ignores=[])
   ast.fix_missing_locations(module)
-  ns={'NavigationError':NavigationError,'run_navigation_test':lambda:{'ok':True}}
+  ns={'NavigationError':NavigationError,'run_navigation_test':lambda job=None:{'mode':'test'},'create_unified_procedure':lambda job:{'mode':'execute','companyCode':job.get('companyCode')}}
   exec(compile(module,'agent.py','exec'),ns)
   return ns
  def test_unknown_job_never_infers_execute(self):
   ns=self._isolated_job_functions()
   with self.assertRaises(NavigationError) as e: ns['run_job']({'companyCode':'12345678'})
   self.assertEqual(e.exception.code,'invalid_job_kind')
- def test_production_disabled(self):
+ def test_production_execute_is_explicitly_routed(self):
   ns=self._isolated_job_functions()
-  with self.assertRaises(NavigationError): ns['run_job']({'kind':'execute','companyCode':'12345678'})
+  result=ns['run_job']({'kind':'execute','companyCode':'12345678'})
+  self.assertEqual(result['mode'],'execute')
+  self.assertEqual(result['companyCode'],'12345678')
 
  def test_screen_memory_normalizes_dynamic_numbers(self):
   with tempfile.TemporaryDirectory() as td:

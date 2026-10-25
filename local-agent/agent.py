@@ -22,13 +22,13 @@ from PIL import Image
 import threading
 import atexit
 from jab_client import JABClient
-from navigation import NavigationError
+from navigation import NavigationError, norm, subtree, visible
 
 BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '8.1.0-fast-main-navigation'
+VERSION = '9.0.0-production-unified-flow'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -628,6 +628,8 @@ def _review_copy(state: str):
         'MANUAL_INTERVENTION': ('تحتاج الشاشة إلى قرار', 'ظهرت نافذة حفظ أو تأكيد أو حالة حساسة. أوقف النظام التنفيذ مؤقتاً ورفع صورة الشاشة إلى تفاصيل الطلب بانتظار قرارك.'),
         'UNKNOWN_SCREEN': ('توقفت الملاحة على شاشة غير متوقعة', 'لم يتمكن النظام من التقدم بأمان داخل ASYCUDA. تم إيقاف الطلب مؤقتاً ورفع صورة الشاشة حتى تختار إغلاق الشاشة المفتوحة والمتابعة أو إيقاف الطلب.'),
         'CLOSE_FAILED': ('تعذر إغلاق الشاشة السابقة', 'لم يعتبر النظام عملية الإغلاق ناجحة لأن الشاشة التي تمت مراجعتها ما زالت موجودة أو تغيرت أثناء التنفيذ. تم التقاط صورة جديدة ولم يتم الضغط على نافذة أخرى.'),
+        'PROCEDURE_CREATED_WAITING_COMPLETION': ('تم إنشاء رقم الإجراء — بانتظار قرار الإنجاز', 'تم تنفيذ إنشاء رقم الإجراء الموحد ورفع صورة النتيجة. راجع الرقم في الصورة، وإذا تريد إنهاء الصفحة اضغط نعم، أنجز الرقم. إذا تريد الانتظار لا تضغط شيئاً وسيبقى الطلب متوقفاً هنا.'),
+        'FINAL_CONFIRMATION_FAILED': ('تعذر تأكيد إنجاز الرقم', 'لم يتمكن النظام من تحديد زر التأكيد النهائي بأمان. راجع الصورة واتخذ قراراً جديداً دون تنفيذ ضغط عشوائي.'),
     }
     return mapping.get(state, ('ظهرت شاشة غير متوقعة', 'تم إيقاف الطلب مؤقتاً حتى تراجع الشاشة وتحدد الإجراء المناسب.'))
 
@@ -949,6 +951,177 @@ def _wait_for_review_decision(job_id: str, review_id: str, state: str, metadata:
             time.sleep(1.5)
 
 
+def _unified_submit_live_fallback() -> bool:
+    current = HELPER.call('snapshot')
+    if current.get('state') != 'UNIFIED_PROCEDURE_OPEN':
+        return False
+    snap=current.get('snapshot') or {}; nodes=snap.get('nodes') or []
+    frame_id=current.get('frame'); frame=next((n for n in nodes if str(n.get('id'))==str(frame_id)),None)
+    if not frame: return False
+    scope=subtree(nodes,frame)
+    fb=frame.get('bounds') or {}; fy=int(fb.get('y',0)); fh=max(1,int(fb.get('height',0)))
+    icons=[]
+    for n in scope:
+        if n.get('role')!='push button' or not visible(n) or 'enabled' not in n.get('states',[]): continue
+        b=n.get('bounds') or {}; w=int(b.get('width',0)); h=int(b.get('height',0)); y=int(b.get('y',0))
+        if 8<=w<=70 and 8<=h<=70 and fy<=y<=fy+max(90,int(fh*.18)):
+            icons.append(n)
+    icons=sorted(icons,key=lambda n:int((n.get('bounds') or {}).get('x',0)))
+    if not (3<=len(icons)<=8): return False
+    return _click_live_node(icons[-2])
+
+
+def _affirm_popup_live_fallback() -> bool:
+    current=HELPER.call('snapshot'); snap=current.get('snapshot') or {}; nodes=snap.get('nodes') or []
+    candidates=[n for n in nodes if n.get('role')=='push button' and visible(n) and 'enabled' in n.get('states',[]) and not n.get('windowMain')]
+    if len(candidates)!=2:
+        # Fall back to the currently detected dialog subtree if Java reports the
+        # popup inside the main HWND rather than as its own top-level window.
+        popups=[n for n in nodes if visible(n) and (n.get('role') in ('alert','dialog','option pane') or 'modal' in n.get('states',[]))]
+        if popups:
+            scope=subtree(nodes,popups[0])
+            candidates=[n for n in scope if n.get('role')=='push button' and visible(n) and 'enabled' in n.get('states',[])]
+    if len(candidates)!=2: return False
+    def box(n):
+        b=n.get('bounds') or {}; return (int(b.get('x',0)),int(b.get('y',0)),int(b.get('width',0)),int(b.get('height',0)))
+    candidates=sorted(candidates,key=lambda n:box(n)[0]); l,r=candidates
+    if abs(box(l)[1]-box(r)[1])>max(12,max(box(l)[3],box(r)[3])//2): return False
+    return _click_live_node(r)
+
+
+def _submit_unified_action():
+    try:
+        return HELPER.call('submit_unified_procedure')
+    except NavigationError as exc:
+        if exc.code not in ('submit_button_not_found','jab_unavailable','helper_unavailable'):
+            raise
+        if not _unified_submit_live_fallback():
+            raise
+        return {'operation':'procedure_submitted','method':'live_bounds_fallback'}
+
+
+def _affirm_final_popup_action():
+    try:
+        return HELPER.call('affirm_current_popup')
+    except NavigationError as exc:
+        if exc.code not in ('final_confirmation_ambiguous','jab_unavailable','helper_unavailable'):
+            raise
+        if not _affirm_popup_live_fallback():
+            raise
+        return {'operation':'final_confirmation_clicked','method':'live_bounds_fallback'}
+
+
+def _wait_for_completion_decision(job_id: str, review_id: str):
+    """Wait after a real procedure number is created.
+
+    No completion click is executed until the operator explicitly confirms it
+    from the web details page.
+    """
+    while True:
+        check_cancelled()
+        try:
+            response = requests.get(
+                api_url(f'/api/agent/jobs/{job_id}/control'),
+                headers=cloud_headers(), timeout=12
+            )
+            response.raise_for_status()
+            data = response.json()
+            if data.get('cancelRequested'):
+                raise NavigationError('cancelled_by_user', 'تم إيقاف الطلب بواسطة المستخدم')
+            review = data.get('review') or {}
+            if str(review.get('id') or '') != review_id:
+                time.sleep(.35)
+                continue
+            decision = str(review.get('decision') or '')
+            if not decision:
+                time.sleep(.35)
+                continue
+            if decision in ('stop', 'keep_and_stop'):
+                raise NavigationError('cancelled_by_user', 'تم إيقاف الطلب بواسطة المستخدم')
+            if decision != 'finalize_and_complete':
+                raise NavigationError('invalid_review_decision', 'قرار إنجاز رقم الإجراء غير مدعوم')
+            _progress(job_id, 'finalizing_procedure', 'تمت الموافقة. جاري تأكيد إنجاز رقم الإجراء الموحد...')
+            try:
+                result = _affirm_final_popup_action()
+                log('Final procedure confirmation clicked through JAB: ' + str(result.get('operation','')))
+            except NavigationError as exc:
+                # Some builds display the generated number first and only show
+                # the completion popup after clicking the same check control once more.
+                if exc.code != 'final_confirmation_ambiguous':
+                    raise
+                _submit_unified_action()
+                time.sleep(.45)
+                result = _affirm_final_popup_action()
+                log('Final procedure confirmation opened and accepted through JAB.')
+            try:
+                requests.post(
+                    api_url(f'/api/agent/jobs/{job_id}/review-resolved'),
+                    headers=cloud_headers(), json={'reviewId': review_id}, timeout=12
+                ).raise_for_status()
+            except Exception:
+                pass
+            return 'finalize_and_complete'
+        except NavigationError:
+            raise
+        except Exception:
+            time.sleep(1.0)
+
+
+def _click_live_node(node: dict) -> bool:
+    b = node.get('bounds') or {}
+    try:
+        x = int(b.get('x') or 0); y = int(b.get('y') or 0)
+        w = int(b.get('width') or 0); h = int(b.get('height') or 0)
+    except Exception:
+        return False
+    if w < 4 or h < 4:
+        return False
+    win = find_asycuda_window()
+    if not win:
+        return False
+    focus_window(win)
+    pyautogui.click(x + w // 2, y + h // 2)
+    return True
+
+
+def _main_screen_live_click_fallback(job_id: str = '') -> bool:
+    """Fallback only for the clean ASYCUDA main screen.
+
+    It never uses stored desktop coordinates. The click target comes from the
+    live Java Access Bridge bounds of the named tree item.
+    """
+    current = HELPER.call('snapshot')
+    if current.get('state') != 'MAIN_SCREEN':
+        return False
+    nodes = current.get('snapshot', {}).get('nodes', [])
+    visible_nodes = [n for n in nodes if 'showing' in n.get('states', [])]
+    folder_names = {norm('الإجراء الموحد'), norm('الاجراء الموحد'), norm('Unified Procedure')}
+    page_names = {norm('رقم الإجراء الموحد'), norm('Unified Procedure Number')}
+
+    def matches(names):
+        return [n for n in visible_nodes if norm(n.get('name','')) in names and (n.get('bounds') or {}).get('width',0)]
+
+    pages = matches(page_names)
+    if pages:
+        _progress(job_id, 'fallback_open_unified_page', 'جاري فتح رقم الإجراء الموحد مباشرة...')
+        return _click_live_node(pages[0])
+
+    folders = matches(folder_names)
+    if folders:
+        _progress(job_id, 'fallback_expand_unified_folder', 'جاري فتح مجلد الإجراء الموحد...')
+        if not _click_live_node(folders[0]):
+            return False
+        time.sleep(.18)
+        refreshed = HELPER.call('snapshot')
+        nodes2 = refreshed.get('snapshot', {}).get('nodes', [])
+        pages2 = [n for n in nodes2 if 'showing' in n.get('states', []) and norm(n.get('name','')) in page_names and (n.get('bounds') or {}).get('width',0)]
+        if pages2:
+            _progress(job_id, 'fallback_open_unified_page', 'جاري فتح رقم الإجراء الموحد...')
+            return _click_live_node(pages2[0])
+        return True
+    return False
+
+
 def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
     """Burst through the known main-screen tree without fixed delays.
 
@@ -1072,6 +1245,20 @@ def ensure_unified_procedure_screen(job_id: str = ''):
                 raise
             time.sleep(.5)
             continue
+        # If the clean main screen is readable but the tree item has no JAB
+        # action, click the exact live bounds of the named element. This is the
+        # only mouse fallback in normal navigation and it is never based on
+        # stored screen coordinates.
+        if state == 'MAIN_SCREEN' and str(result.get('operation') or 'wait') == 'wait':
+            try:
+                if _main_screen_live_click_fallback(job_id):
+                    time.sleep(.16)
+                    previous, repeats = None, 0
+                    continue
+            except NavigationError as exc:
+                if exc.code not in ('jab_unavailable','helper_unavailable'):
+                    raise
+
         log('ASYCUDA state: ' + result['state'] + ' | planner=' + str(result.get('source','rule')))
         operation = result['operation']
         if operation == 'dismiss_notifications':
@@ -1164,8 +1351,96 @@ def navigate_to_unified(job_id: str = ''):
 
 
 def create_unified_procedure(job):
-    # Production stays disabled pending explicit authorization and verified selectors.
-    raise NavigationError('manual_intervention_required', 'إنشاء إجراء حقيقي غير مفعّل أثناء اختبار النظام')
+    job_id = str(job.get('id') or '')
+    code = ''.join(ch for ch in str(job.get('companyCode') or '') if ch.isdigit())
+    if not code:
+        raise NavigationError('invalid_company_code', 'رمز الشركة مطلوب للتنفيذ الحقيقي')
+
+    _progress(job_id, 'opening_unified_procedure', 'جاري الوصول إلى شاشة رقم الإجراء الموحد...')
+    ensure_unified_procedure_screen(job_id)
+    check_cancelled()
+    snap = HELPER.call('snapshot')
+    if snap.get('state') != 'UNIFIED_PROCEDURE_OPEN':
+        raise NavigationError('navigation_changed', 'تغيرت شاشة الأسيكودا قبل إدخال رمز الشركة')
+
+    _progress(job_id, 'entering_company_code', 'جاري إدخال رمز الشركة وتثبيته...')
+    filled = HELPER.call('set_company_code', company_code=code)
+    b = filled.get('bounds') or {}
+    # Explicitly commit the company code with Enter as required by this ASYCUDA build.
+    try:
+        x=int(b.get('x') or 0); y=int(b.get('y') or 0); w=int(b.get('width') or 0); h=int(b.get('height') or 0)
+        win=find_asycuda_window()
+        if win: focus_window(win)
+        if w>0 and h>0:
+            pyautogui.click(x+w//2, y+h//2)
+            # Numeric company codes are safe to retype after focusing the exact
+            # live JAB field. This covers Java builds where send_text() updates
+            # the model but the combo/editor does not visually commit it.
+            pyautogui.hotkey('ctrl','a')
+            pyautogui.write(code, interval=.025)
+        pyautogui.press('enter')
+    except Exception:
+        raise NavigationError('company_commit_failed', 'تم إدخال رمز الشركة لكن تعذر إرسال Enter لتثبيته')
+
+    # Give ASYCUDA a short event-loop turn, then let the normal review/navigation
+    # policy handle any validation popup instead of guessing through it.
+    time.sleep(.35)
+    current = HELPER.call('snapshot')
+    if current.get('state') != 'UNIFIED_PROCEDURE_OPEN':
+        ensure_unified_procedure_screen(job_id)
+    check_cancelled()
+
+    _progress(job_id, 'creating_procedure', 'تم تثبيت رمز الشركة. جاري إنشاء رقم الإجراء الموحد...')
+    _submit_unified_action()
+
+    # Wait briefly for the generated number / completion dialog to render. No
+    # production confirmation is clicked here.
+    deadline=time.monotonic()+8.0
+    last=None
+    while time.monotonic()<deadline:
+        check_cancelled()
+        time.sleep(.25)
+        try:
+            last=HELPER.call('snapshot')
+            # A popup/dialog or a changed visible state means the server response
+            # has arrived. If the page stays open, the generated number may simply
+            # have appeared in its result field; either case is ready for review.
+            if last.get('state') != 'LOADING':
+                break
+        except NavigationError as exc:
+            if exc.code not in ('jab_unavailable','helper_unavailable'):
+                raise
+
+    metadata = _review_metadata(last or {}, 'PROCEDURE_CREATED_WAITING_COMPLETION', {'companyCode': code})
+    review_id = _send_review(job_id, 'PROCEDURE_CREATED_WAITING_COMPLETION', metadata)
+    _progress(job_id, 'procedure_created_waiting_completion', 'تم إنشاء رقم الإجراء ورفع صورة النتيجة. بانتظار قرارك لإنجاز الرقم.')
+    _wait_for_completion_decision(job_id, review_id)
+    check_cancelled()
+
+    # Allow the final confirmation to settle, then capture proof of the completed
+    # state. If a new unexpected popup remains, surface it through the review loop
+    # rather than clicking blindly.
+    time.sleep(.65)
+    try:
+        after = HELPER.call('snapshot')
+        if after.get('state') in ('UNKNOWN_POPUP','MANUAL_INTERVENTION','NOTIFICATIONS_POPUP'):
+            state=str(after.get('state'))
+            meta=_review_metadata(after,state)
+            rid=_send_review(job_id,state,meta)
+            _wait_for_review_decision(job_id,rid,state,meta)
+    except NavigationError as exc:
+        if exc.code not in ('jab_unavailable','helper_unavailable'):
+            raise
+
+    final_path = take_screenshot('unified-completed')
+    return {
+        'statusCode':'PROCEDURE_COMPLETED',
+        'message':'تم إنشاء رقم الإجراء الموحد وتأكيد إنجازه بنجاح.',
+        'unifiedProcedureNo':'',
+        'whatsappSent':False,
+        'screenshotTaken':True,
+        'screenshotName':final_path.name,
+    }
 
 
 def take_screenshot(label: str):
@@ -1291,7 +1566,7 @@ def heartbeat(stop):
     while not stop.is_set():
         try:
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation']}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code

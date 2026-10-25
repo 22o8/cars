@@ -11,3 +11,6 @@ Interactive review workflow wording and details-page decision guidance updated.
 
 ## v12
 Exact-target interactive review and verified resume-to-unified navigation.
+
+## v13 Production Unified Procedure
+Real unified-procedure execution is enabled for explicit `execute` jobs. Test jobs remain navigation-only. The agent commits the company code with Enter, creates the procedure, uploads a review screenshot, waits for operator approval, then confirms completion and uploads final proof.

@@ -110,7 +110,6 @@ async function submitTest(){
 async function submitTransaction(t:Transaction){
   if(!t.companyCode?.trim()) return showError(new Error('رمز الشركة غير مضاف لهذه المعاملة'))
   const phone = cleanPhone(whatsappNumber.value)
-  if(!phone) return showError(new Error('أدخل رقم واتساب الافتراضي أعلى الصفحة'))
   await submitCloud({ companyCode:t.companyCode, companyName:t.companyName, whatsappNumber:phone, serial:t.serial })
 }
 
@@ -197,13 +196,15 @@ async function clearAll(){
 
 function syncLocalTransactions(){
   for(const job of jobs.value){
-    if(job.status !== 'done' || !job.unifiedProcedureNo || !job.serial) continue
+    if(job.status !== 'done' || !job.serial) continue
     const tx = transactions.value.find(t => t.serial === job.serial)
-    if(!tx || tx.unifiedProcedureNo) continue
-    tx.unifiedProcedureNo = job.unifiedProcedureNo
-    update(tx, 'استلام رقم الإجراء الموحد من جهاز الأسيكودا البعيد')
+    if(!tx) continue
+    if(job.unifiedProcedureNo && !tx.unifiedProcedureNo) tx.unifiedProcedureNo = job.unifiedProcedureNo
     const stage = tx.stages.find(s=>s.key==='unified')
-    if(stage?.status === 'active') setStage(tx,'unified','done')
+    if(stage?.status === 'active') {
+      update(tx, job.unifiedProcedureNo ? 'استلام رقم الإجراء الموحد من جهاز الأسيكودا البعيد' : 'إكمال إنشاء وإنجاز رقم الإجراء الموحد على جهاز الأسيكودا')
+      setStage(tx,'unified','done')
+    }
   }
 }
 
@@ -251,13 +252,13 @@ watch([mobilePin, whatsappNumber], savePrefs)
   </section>
   <section class="card mobile-unified-card">
     <h3>التنفيذ الحقيقي</h3>
-    <p>غير مفعّل لحين اكتمال اختبار التنقل والموافقة على إنشاء إجراء حقيقي.</p>
+    <p>ينشئ رقم إجراء موحد حقيقي. بعد ظهور الرقم يتوقف النظام ويعرض صورة النتيجة بانتظار موافقتك على الإنجاز النهائي.</p>
     <div class="mobile-form-grid">
       <div class="field"><label>شركة محفوظة — اختياري</label><select class="input" @change="chooseCompany(($event.target as HTMLSelectElement).value)"><option value="">اختر الشركة</option><option v-for="c in companies" :key="c.id" :value="c.id">{{c.name}}</option></select></div>
       <div class="field"><label>رمز الشركة</label><input v-model="companyCode" class="input" inputmode="numeric" placeholder="7400XXXX"></div>
-      <div class="field"><label>رقم واتساب</label><input v-model="whatsappNumber" class="input" inputmode="tel" placeholder="9647XXXXXXXXX"></div>
+      <div class="field"><label>رقم واتساب — اختياري حالياً</label><input v-model="whatsappNumber" class="input" inputmode="tel" placeholder="9647XXXXXXXXX"></div>
       <div class="field optional-company"><label>اسم الشركة — اختياري</label><input v-model="companyName" class="input" placeholder="يظهر في رسالة واتساب"></div>
-      <button class="btn primary big-mobile-action" :disabled="true" @click="submitCloud()">{{sending?'جاري الإرسال...':'إرسال إلى جهاز الأسيكودا'}}</button>
+      <button class="btn primary big-mobile-action" :disabled="sending || !companyCode.trim()" @click="submitCloud()">{{sending?'جاري الإرسال...':'إنشاء رقم إجراء حقيقي'}}</button>
     </div>
   </section>
 
@@ -266,7 +267,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
     <div class="quick-tx-list">
       <article v-for="t in localQueue" :key="t.id" class="quick-tx-row">
         <div><b>{{t.serial}}</b><strong>{{t.companyName}}</strong><small>{{t.companyCode || 'رمز الشركة غير مضاف'}} — {{t.vehicleNumber}}</small></div>
-        <button class="btn primary" :disabled="true" @click="submitTransaction(t)">إرسال للجهاز</button>
+        <button class="btn primary" :disabled="sending || !t.companyCode?.trim()" @click="submitTransaction(t)">إنشاء رقم الإجراء</button>
       </article>
     </div>
   </section>

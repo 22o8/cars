@@ -2,7 +2,7 @@ import { getJson, setJson } from '../../../../utils/redis'
 import { requireMobilePin } from '../../../../utils/security'
 import { jobKey, type ReviewDecision, type UnifiedCloudJob } from '../../../../utils/unified'
 
-const allowed = new Set<ReviewDecision>(['dismiss_and_resume', 'keep_and_stop', 'resume', 'stop'])
+const allowed = new Set<ReviewDecision>(['dismiss_and_resume', 'keep_and_stop', 'resume', 'stop', 'finalize_and_complete'])
 
 export default defineEventHandler(async (event) => {
   requireMobilePin(event)
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
   } else {
     job.status = 'processing'
     job.statusCode = 'review_decision_received'
-    job.message = action === 'dismiss_and_resume' ? 'تم إرسال أمر إغلاق الشاشة والمتابعة.' : 'تم إرسال أمر المتابعة.'
+    job.message = action === 'dismiss_and_resume' ? 'تم إرسال أمر إغلاق الشاشة والمتابعة.' : action === 'finalize_and_complete' ? 'تمت الموافقة على إنجاز رقم الإجراء. جاري التأكيد على جهاز الأسيكودا.' : 'تم إرسال أمر المتابعة.'
   }
   await setJson(event, jobKey(id), job)
   return { ok: true, job }
