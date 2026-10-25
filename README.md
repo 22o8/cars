@@ -26,3 +26,7 @@ Security Warning, interactive review, fast navigation, and production execution 
 
 ## v13.3
 Verified live login and verified procedure creation result.
+
+
+## v13.4 Native Login First
+Login screen fallback now detects the live small ASYCUDA login window and fills/submits credentials even when Java Access Bridge does not expose LOGIN roles correctly.

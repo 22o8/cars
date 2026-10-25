@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.3.0-verified-full-flow'
+VERSION = '9.4.0-native-login-first'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -111,9 +111,86 @@ def focus_window(win):
         if win.isMinimized:
             win.restore()
         win.activate()
-        time.sleep(.8)
+        time.sleep(.25)
     except Exception:
         pass
+
+
+def _native_login_window():
+    """Return the live ASYCUDA login window when it is visibly the small pre-main dialog.
+
+    Java Access Bridge does not expose the Iraqi Java 8 login controls consistently on
+    every launch.  The login window itself is still a real ASYCUDA top-level window,
+    so this detector uses the live window rectangle only; it never uses stored desktop
+    coordinates. Security Warning has a different title and is handled before this.
+    """
+    win = find_asycuda_window()
+    if not win:
+        return None
+    try:
+        width = int(getattr(win, 'width', 0) or 0)
+        height = int(getattr(win, 'height', 0) or 0)
+        title = str(getattr(win, 'title', '') or '')
+        if 'asycudaworld production server' not in title.casefold():
+            return None
+        # Observed login dialog is ~377x274. Keep a deliberately broad range so
+        # DPI scaling works while excluding the normal maximized ASYCUDA desktop.
+        if 280 <= width <= 760 and 190 <= height <= 520:
+            return win
+    except Exception:
+        return None
+    return None
+
+
+def _native_login_fill_and_submit(username: str, password: str) -> bool:
+    """Fill and submit the exact live ASYCUDA login dialog using window-relative points.
+
+    This is the first fallback when JAB misses LOGIN. Points are recomputed from the
+    current ASYCUDA login window on every attempt, so moving the window or changing
+    display resolution does not invalidate them.
+    """
+    win = _native_login_window()
+    if not win or not username or not password:
+        return False
+    try:
+        left = int(win.left); top = int(win.top)
+        width = max(1, int(win.width)); height = max(1, int(win.height))
+        focus_window(win)
+        # Username and password fields in the Iraqi Java 8 login dialog. Use the
+        # middle-right portion of each field to avoid labels/icons at the left edge.
+        user_pt = (left + int(width * .76), top + int(height * .29))
+        pass_pt = (left + int(width * .76), top + int(height * .405))
+        ok_pt = (left + int(width * .835), top + int(height * .735))
+
+        pyautogui.click(*user_pt)
+        pyautogui.hotkey('ctrl', 'a')
+        pyautogui.write(str(username), interval=.012)
+        pyautogui.click(*pass_pt)
+        pyautogui.hotkey('ctrl', 'a')
+        pyautogui.write(str(password), interval=.012)
+        # Enter is the preferred default action. If the dialog remains, activate
+        # the live green-check position within the same verified ASYCUDA window.
+        pyautogui.press('enter')
+        time.sleep(.7)
+        if _native_login_window() is not None:
+            pyautogui.click(*ok_pt)
+        log('Native ASYCUDA login fields filled and login action submitted.')
+        return True
+    except Exception as exc:
+        log('Native login fallback failed: ' + type(exc).__name__ + ': ' + str(exc))
+        return False
+
+
+def _wait_native_login_exit(timeout: float = 18.0) -> bool:
+    deadline = time.monotonic() + max(1.0, float(timeout))
+    while time.monotonic() < deadline:
+        check_cancelled()
+        if _security_dialog():
+            return False
+        if _native_login_window() is None:
+            return True
+        time.sleep(.12)
+    return False
 
 
 def _wrapper_rect(win):
@@ -1336,6 +1413,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
     launch_asycuda()
     deadline = time.monotonic() + 600
     login_sent = False
+    native_login_attempts = 0
     previous, repeats = None, 0
     skip_review_once = None
     review_states = {'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN', 'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP', 'MANUAL_INTERVENTION', 'UNKNOWN_SCREEN', 'OS_MODAL_BLOCKER'}
@@ -1348,6 +1426,33 @@ def ensure_unified_procedure_screen(job_id: str = ''):
             _click_security_warning_if_present(12, trusted_launch=True)
             previous, repeats = None, 0
             continue
+
+        # Native-login-first guard. Some Iraqi Java 8 launches expose the login
+        # dialog visually but omit/alter JAB roles, which previously left the
+        # Agent staring at a blank Login screen forever. Detect the small live
+        # ASYCUDA login window directly and submit credentials immediately.
+        login_win = _native_login_window()
+        if login_win is not None and not login_sent:
+            username, password = secret('asycuda_username'), secret('asycuda_password')
+            if not username or not password:
+                raise NavigationError('login_failed', 'شاشة الدخول مفتوحة لكن حساب ASYCUDA غير محفوظ. شغّل change-asycuda-account.bat')
+            native_login_attempts += 1
+            log(f'Native ASYCUDA login window detected; filling credentials (attempt {native_login_attempts}).')
+            if not _native_login_fill_and_submit(username, password):
+                raise NavigationError('login_failed', 'تعذر الكتابة داخل شاشة تسجيل الدخول الفعلية')
+            login_sent = True
+            if _wait_native_login_exit(18.0):
+                log('Native ASYCUDA login accepted; continuing immediately.')
+                previous, repeats = None, 0
+                continue
+            # One bounded retry protects against the Java dialog receiving focus
+            # late while it finishes initialization. Never spin indefinitely.
+            if native_login_attempts < 2:
+                login_sent = False
+                time.sleep(.35)
+                continue
+            raise NavigationError('login_failed', 'بقيت شاشة تسجيل الدخول مفتوحة بعد محاولتين. تحقق من الحساب أو حالة اتصال ASYCUDA.')
+
         try:
             current = HELPER.call('snapshot')
             state = str(current.get('state') or 'LOADING')

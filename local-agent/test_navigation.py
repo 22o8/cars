@@ -216,7 +216,7 @@ class VisibleFrameRegressionTests(unittest.TestCase):
         text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
         self.assertIn('pyautogui.doubleClick', text)
         self.assertIn("clicks=2", text)
-        self.assertIn("VERSION = '9.3.0-verified-full-flow'", text)
+        self.assertIn("VERSION = '9.4.0-native-login-first'", text)
 
 
 
@@ -258,5 +258,21 @@ class CoreInvariantRegressionTests(unittest.TestCase):
         self.assertIn("pyautogui.press('enter')", text)
         self.assertIn("PROCEDURE_CREATED_WAITING_COMPLETION", text)
 
+
+
+class NativeLoginFirstRegressionTests(unittest.TestCase):
+    def test_native_login_fallback_is_before_jab_snapshot(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn('_native_login_window()', text)
+        self.assertIn('_native_login_fill_and_submit(username, password)', text)
+        self.assertLess(text.index("login_win = _native_login_window()"), text.index("current = HELPER.call('snapshot')", text.index('def ensure_unified_procedure_screen')))
+
+    def test_native_login_uses_live_window_relative_points_and_is_bounded(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn("width * .76", text)
+        self.assertIn("height * .405", text)
+        self.assertIn("width * .835", text)
+        self.assertIn('_wait_native_login_exit(18.0)', text)
+        self.assertIn('native_login_attempts < 2', text)
 
 if __name__=='__main__': unittest.main()
