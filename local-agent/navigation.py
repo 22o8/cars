@@ -27,6 +27,21 @@ def subtree(nodes, root):
             result.append(n)
     return result
 
+
+def target_for(node, kind):
+    if not node:
+        return None
+    return {
+        'kind': kind,
+        'nodeId': str(node.get('id','')),
+        'windowHwnd': int(node.get('windowHwnd') or 0),
+        'windowMain': bool(node.get('windowMain')),
+        'windowTitle': str(node.get('windowTitle') or ''),
+        'role': str(node.get('role') or ''),
+        'name': str(node.get('name') or ''),
+        'bounds': dict(node.get('bounds') or {}),
+    }
+
 def detect_state(snapshot):
     if snapshot.get('truncated'):
         raise NavigationError('manual_intervention_required', 'تعذر قراءة واجهة الأسيكودا كاملة')
@@ -44,17 +59,19 @@ def detect_state(snapshot):
     )
     if unread_mail:
         popup = next((n for n in nodes if n['role'] in ('alert', 'dialog', 'option pane') or 'modal' in n.get('states', [])), None)
-        return {'state': 'NOTIFICATIONS_POPUP', 'popup': popup['id'] if popup else ''}
+        anchor = popup or next((n for n in nodes if ('غير مقرو' in norm(n.get('name','')) or 'unread' in norm(n.get('name','')))), None)
+        kind = 'java_window' if anchor and anchor.get('windowHwnd') and not anchor.get('windowMain') else 'jab_popup'
+        return {'state': 'NOTIFICATIONS_POPUP', 'popup': popup['id'] if popup else '', 'target': target_for(anchor, kind)}
 
     popup_nodes = [n for n in nodes if n['role'] in ('alert', 'dialog', 'option pane') or 'modal' in n.get('states', [])]
     for popup in popup_nodes:
         inside = subtree(nodes, popup)
         text = norm(' '.join(n['name'] for n in inside if n['role'] not in ('text', 'password text')))
         if any(x in text for x in ('unsaved', 'discard', 'save changes', 'غير محفوظ', 'حفظ التغييرات', 'تجاهل التغييرات')):
-            return {'state': 'MANUAL_INTERVENTION', 'popup': popup['id']}
+            return {'state': 'MANUAL_INTERVENTION', 'popup': popup['id'], 'target': target_for(popup, 'java_window' if popup.get('windowHwnd') and not popup.get('windowMain') else 'jab_popup')}
         if any(n['role'] == 'password text' for n in inside):
-            return {'state': 'LOGIN', 'popup': popup['id']}
-        return {'state': 'UNKNOWN_POPUP', 'popup': popup['id']}
+            return {'state': 'LOGIN', 'popup': popup['id'], 'target': target_for(popup, 'java_window' if popup.get('windowHwnd') and not popup.get('windowMain') else 'jab_popup')}
+        return {'state': 'UNKNOWN_POPUP', 'popup': popup['id'], 'target': target_for(popup, 'java_window' if popup.get('windowHwnd') and not popup.get('windowMain') else 'jab_popup')}
     if any(n['role'] == 'password text' for n in nodes):
         return {'state': 'LOGIN'}
     frames = [n for n in nodes if n['role'] == 'internal frame' and ('selected' in n['states'] or 'active' in n['states'])]
@@ -64,15 +81,15 @@ def detect_state(snapshot):
         if title in PAGE:
             labels = {norm(n['name']) for n in content if n['role'] == 'label'}
             if labels.intersection({norm('رمز الشركة'), 'company code'}) and any(n['role'] in ('text', 'combo box') and 'enabled' in n['states'] for n in content):
-                return {'state': 'UNIFIED_PROCEDURE_OPEN', 'frame': frame['id']}
+                return {'state': 'UNIFIED_PROCEDURE_OPEN', 'frame': frame['id'], 'target': target_for(frame, 'internal_frame')}
         if any(s in title for s in ('البيان المسبق', 'pre-declaration', 'pre declaration')):
-            return {'state': 'PREDECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name','')}
+            return {'state': 'PREDECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name',''), 'target': target_for(frame, 'internal_frame')}
         if any(s in title for s in ('بيان', 'declaration')):
-            return {'state': 'DECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name','')}
+            return {'state': 'DECLARATION_OPEN', 'frame': frame['id'], 'title': frame.get('name',''), 'target': target_for(frame, 'internal_frame')}
         if any(s in title for s in ('اشعار', 'الاشعارات', 'رسائل', 'صندوق البريد', 'notification', 'mailbox', 'message')):
-            return {'state': 'NOTIFICATIONS_PAGE', 'frame': frame['id'], 'title': frame.get('name','')}
+            return {'state': 'NOTIFICATIONS_PAGE', 'frame': frame['id'], 'title': frame.get('name',''), 'target': target_for(frame, 'internal_frame')}
     if frames:
-        return {'state': 'OTHER_PAGE_OPEN', 'frame': frames[0]['id'], 'title': frames[0].get('name','')}
+        return {'state': 'OTHER_PAGE_OPEN', 'frame': frames[0]['id'], 'title': frames[0].get('name',''), 'target': target_for(frames[0], 'internal_frame')}
     return {'state': 'MAIN_SCREEN' if nodes else 'LOADING'}
 
 def plan(snapshot):

@@ -48,23 +48,45 @@ class Session:
         for driver in self.drivers.values(): driver._pump_messages()
         windows = []
         win32gui.EnumWindows(lambda h, _: windows.append(h) if win32gui.IsWindowVisible(h) else None, None)
-        main = [h for h in windows if win32gui.GetWindowText(h).startswith('ASYCUDAWorld production server')]
-        if len(main) != 1:
-            raise NavigationError('jab_unavailable', 'تعذر تحديد نافذة ASYCUDA بشكل فريد')
-        hwnd = main[0]
+        main_candidates = [h for h in windows if win32gui.GetWindowText(h).startswith('ASYCUDAWorld production server')]
+        if not main_candidates:
+            raise NavigationError('jab_unavailable', 'لم يتم العثور على نافذة ASYCUDA')
+
+        # IMPORTANT: Iraqi ASYCUDA can expose a Swing JOptionPane/JDialog as a
+        # second top-level Java HWND with the SAME window title.  Older builds
+        # required exactly one matching title, which made JAB disappear at the
+        # precise moment a notification popup appeared.  Choose the largest
+        # matching HWND as the main frame and attach to every Java HWND in the
+        # same process instead.
+        def area(h):
+            try:
+                l,t,r,b = win32gui.GetWindowRect(h)
+                return max(0, r-l) * max(0, b-t)
+            except Exception:
+                return 0
+        hwnd = max(main_candidates, key=area)
         pid = win32process.GetWindowThreadProcessId(hwnd)[1]
         if hwnd not in self.drivers:
-            self.drivers[hwnd] = JABDriver(title='ASYCUDAWorld production server*', bridge_dll=DLL, timeout=12)
+            self.drivers[hwnd] = JABDriver(hwnd=hwnd, bridge_dll=DLL, timeout=12)
         bridge = self.drivers[hwnd].bridge
         handles = [h for h in windows if win32process.GetWindowThreadProcessId(h)[1] == pid and bridge.isJavaWindow(h)]
-        handles.sort(key=lambda h: h == hwnd)
+        if hwnd not in handles:
+            handles.append(hwnd)
+        # Traverse non-main Java dialogs first, then the main frame.  This lets
+        # detect_state() see a modal alert before normal navigation elements.
+        handles = sorted(set(handles), key=lambda h: (h == hwnd, -area(h)))
         for h in list(self.drivers):
             if h not in handles: self.drivers.pop(h).detach()
         nodes, truncated = [], False
         for h in windows:
             if win32process.GetWindowThreadProcessId(h)[1] == pid and h not in handles and win32gui.GetClassName(h) in ('#32770', 'SunAwtDialog'):
-                nodes.append({'id': 'native-' + str(h), 'parent': None, 'role': 'dialog', 'name': 'Unrecognized native ASYCUDA dialog', 'states': ['showing'], 'action': False})
-        def visit(el, parent, depth, owned=True):
+                
+                try:
+                    l,t,r,b = win32gui.GetWindowRect(h)
+                except Exception:
+                    l=t=r=b=0
+                nodes.append({'id': 'native-' + str(h), 'parent': None, 'role': 'dialog', 'name': 'Unrecognized native ASYCUDA dialog', 'states': ['showing'], 'action': False, 'windowHwnd': int(h), 'windowMain': False, 'windowTitle': win32gui.GetWindowText(h), 'bounds': {'x':int(l),'y':int(t),'width':max(0,int(r-l)),'height':max(0,int(b-t))}})
+        def visit(el, parent, depth, window_hwnd, window_main, window_title, owned=True):
             nonlocal truncated
             if len(nodes) >= 5000 or depth > 60:
                 truncated = True
@@ -90,13 +112,25 @@ class Session:
                           'name': '' if role in ('text', 'password text') else el.name,
                           'description': '' if role in ('text', 'password text') else description,
                           'states': list(el.states_en_us), 'action': bool(el.accessible_action),
-                          'index_in_parent': index_in_parent, 'bounds': bounds})
-            for child in el.get_children(): visit(child, key, depth + 1)
+                          'index_in_parent': index_in_parent, 'bounds': bounds, 'windowHwnd': int(window_hwnd), 'windowMain': bool(window_main), 'windowTitle': str(window_title or '')})
+            for child in el.get_children(): visit(child, key, depth + 1, window_hwnd, window_main, window_title)
+        java_windows = []
         for h in handles:
             if h not in self.drivers: self.drivers[h] = JABDriver(hwnd=h, bridge_dll=DLL, timeout=8)
             self.drivers[h]._pump_messages()
-            visit(self.drivers[h].root_element, None, 0, owned=False)
-        return {'nodes': nodes, 'truncated': truncated}
+            try:
+                rect = list(win32gui.GetWindowRect(h))
+            except Exception:
+                rect = [0,0,0,0]
+            java_windows.append({
+                'hwnd': int(h),
+                'title': win32gui.GetWindowText(h),
+                'className': win32gui.GetClassName(h),
+                'rect': rect,
+                'main': bool(h == hwnd),
+            })
+            visit(self.drivers[h].root_element, None, 0, h, h == hwnd, win32gui.GetWindowText(h), owned=False)
+        return {'nodes': nodes, 'truncated': truncated, 'javaWindows': java_windows, 'mainHwnd': int(hwnd), 'pid': int(pid)}
 
     def request(self, request):
         snapshot = self.snapshot()

@@ -10,7 +10,7 @@ export interface UnifiedReview {
   createdAt: string
   screenshotMime?: string
   screenshotAvailable?: boolean
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, any>
   decision?: ReviewDecision
   decisionAt?: string
   resolvedAt?: string

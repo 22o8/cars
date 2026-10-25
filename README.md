@@ -7,3 +7,7 @@
 
 ## v9.1
 Interactive review workflow wording and details-page decision guidance updated.
+
+
+## v12
+Exact-target interactive review and verified resume-to-unified navigation.

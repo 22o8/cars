@@ -135,7 +135,10 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
       <div v-if="job.companyCode"><small>رمز الشركة</small><b>{{job.companyCode}}</b></div>
     </section>
 
-
+    <section v-if="job.message && job.status!=='needs_review'" class="card live-progress">
+      <strong>حالة التنفيذ الآن</strong>
+      <p>{{job.message}}</p>
+    </section>
 
     <section v-if="job.status==='needs_review' && job.review" class="card review-notice">
       <strong>الطلب متوقف مؤقتاً بانتظار قرارك</strong>
@@ -148,12 +151,15 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
         <span class="review-pill">{{job.status==='needs_review'?'بانتظار قرار':'تم إرسال القرار'}}</span>
       </div>
       <p class="review-message">{{job.review.message}}</p>
+      <div v-if="job.review.metadata?.target?.name || job.review.metadata?.target?.windowTitle" class="target-info">
+        <span>الشاشة التي سيتم التحكم بها:</span>
+        <b>{{job.review.metadata?.target?.name || job.review.metadata?.target?.windowTitle}}</b>
+      </div>
       <div v-if="reviewScreenshotUrl" class="shot-wrap"><img :src="reviewScreenshotUrl" alt="لقطة شاشة ASYCUDA"></div>
       <div v-else class="shot-empty">لا توجد صورة متاحة لهذه الحالة.</div>
       <div v-if="job.status==='needs_review'" class="decision-actions">
-        <button class="btn primary" :disabled="busy" @click="decide('dismiss_and_resume')">إغلاق الصفحة المفتوحة ومتابعة</button>
-        <button v-if="['DECLARATION_OPEN','PREDECLARATION_OPEN'].includes(job.review.state)" class="btn ghost" :disabled="busy" @click="decide('resume')">إبقاء الصفحة ومتابعة</button>
-        <button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إبقاء الشاشة وإيقاف الطلب</button>
+        <button class="btn primary" :disabled="busy" @click="decide('dismiss_and_resume')">إغلاق نفس الصفحة ومتابعة إلى رقم الإجراء الموحد</button>
+        <button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف الطلب وإبقاء الشاشة كما هي</button>
       </div>
     </section>
 
@@ -184,5 +190,5 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
 </template>
 
 <style scoped>
-.detail-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}.detail-summary>div{display:flex;flex-direction:column;gap:5px}.detail-summary small,.review-head p{color:#76838b}.review-card{overflow:hidden}.review-notice{background:#fff8e6;border:1px solid #f3ddb2}.review-notice strong{display:block;margin-bottom:8px;color:#8a5b00}.review-notice p{margin:0;color:#6b5a2b}.review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.review-head h2{margin:0 0 5px}.review-head p{margin:0}.review-pill{background:#fff0cc;color:#8a5b00;border-radius:999px;padding:7px 12px;font-weight:700}.review-message{font-size:1rem}.shot-wrap{background:#111;border-radius:14px;padding:8px;display:flex;justify-content:center;max-height:68vh;overflow:auto}.shot-wrap img{max-width:100%;height:auto;border-radius:9px}.shot-empty{padding:34px;text-align:center;background:#f5f7f8;border-radius:12px;color:#7a858b}.decision-actions,.detail-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.history-list{display:grid;gap:9px}.history-list>div{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #edf0f1}.history-review{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.history-shot{margin-top:16px}.pin-unlock-row{display:flex;gap:10px;align-items:center}.pin-unlock-row .input{max-width:320px}@media(max-width:720px){.pin-unlock-row{flex-direction:column;align-items:stretch}.pin-unlock-row .input{max-width:none}.review-head,.history-list>div{flex-direction:column}.decision-actions .btn,.detail-actions .btn{width:100%}}
+.detail-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}.detail-summary>div{display:flex;flex-direction:column;gap:5px}.detail-summary small,.review-head p{color:#76838b}.review-card{overflow:hidden}.live-progress{background:#eef8ff;border:1px solid #cde8fa}.live-progress strong{display:block;margin-bottom:6px}.live-progress p{margin:0}.target-info{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#f4f7f8;border-radius:10px;padding:10px 12px;margin:10px 0}.target-info span{color:#758188}.review-notice{background:#fff8e6;border:1px solid #f3ddb2}.review-notice strong{display:block;margin-bottom:8px;color:#8a5b00}.review-notice p{margin:0;color:#6b5a2b}.review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.review-head h2{margin:0 0 5px}.review-head p{margin:0}.review-pill{background:#fff0cc;color:#8a5b00;border-radius:999px;padding:7px 12px;font-weight:700}.review-message{font-size:1rem}.shot-wrap{background:#111;border-radius:14px;padding:8px;display:flex;justify-content:center;max-height:68vh;overflow:auto}.shot-wrap img{max-width:100%;height:auto;border-radius:9px}.shot-empty{padding:34px;text-align:center;background:#f5f7f8;border-radius:12px;color:#7a858b}.decision-actions,.detail-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.history-list{display:grid;gap:9px}.history-list>div{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #edf0f1}.history-review{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.history-shot{margin-top:16px}.pin-unlock-row{display:flex;gap:10px;align-items:center}.pin-unlock-row .input{max-width:320px}@media(max-width:720px){.pin-unlock-row{flex-direction:column;align-items:stretch}.pin-unlock-row .input{max-width:none}.review-head,.history-list>div{flex-direction:column}.decision-actions .btn,.detail-actions .btn{width:100%}}
 </style>

@@ -28,7 +28,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '6.0.0-window-aware-review'
+VERSION = '8.0.0-exact-interactive-review'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -627,9 +627,190 @@ def _review_copy(state: str):
         'UNKNOWN_POPUP': ('ظهرت نافذة غير معروفة', 'لن يضغط النظام أي زر داخل هذه النافذة قبل قرارك. ستظهر الصورة داخل تفاصيل الطلب لتحدد هل تريد إيقاف الطلب أو إغلاق النافذة والمتابعة.'),
         'MANUAL_INTERVENTION': ('تحتاج الشاشة إلى قرار', 'ظهرت نافذة حفظ أو تأكيد أو حالة حساسة. أوقف النظام التنفيذ مؤقتاً ورفع صورة الشاشة إلى تفاصيل الطلب بانتظار قرارك.'),
         'UNKNOWN_SCREEN': ('توقفت الملاحة على شاشة غير متوقعة', 'لم يتمكن النظام من التقدم بأمان داخل ASYCUDA. تم إيقاف الطلب مؤقتاً ورفع صورة الشاشة حتى تختار إغلاق الشاشة المفتوحة والمتابعة أو إيقاف الطلب.'),
+        'CLOSE_FAILED': ('تعذر إغلاق الشاشة السابقة', 'لم يعتبر النظام عملية الإغلاق ناجحة لأن الشاشة التي تمت مراجعتها ما زالت موجودة أو تغيرت أثناء التنفيذ. تم التقاط صورة جديدة ولم يتم الضغط على نافذة أخرى.'),
     }
     return mapping.get(state, ('ظهرت شاشة غير متوقعة', 'تم إيقاف الطلب مؤقتاً حتى تراجع الشاشة وتحدد الإجراء المناسب.'))
 
+
+
+def _target_rect(metadata: dict | None):
+    metadata = metadata or {}
+    target = metadata.get('target') or {}
+    b = target.get('bounds') or {}
+    try:
+        x, y = int(b.get('x') or 0), int(b.get('y') or 0)
+        w, h = int(b.get('width') or 0), int(b.get('height') or 0)
+        if w > 0 and h > 0:
+            return (x, y, x + w, y + h)
+    except Exception:
+        pass
+    rect = metadata.get('rect') or ()
+    if isinstance(rect, (list, tuple)) and len(rect) == 4:
+        try:
+            return tuple(int(v) for v in rect)
+        except Exception:
+            pass
+    return None
+
+
+def _review_metadata(current: dict | None, state: str, extra: dict | None = None):
+    current = current or {}
+    data = {
+        'observedState': state,
+        'capturedAt': time.strftime('%Y-%m-%dT%H:%M:%S'),
+        'target': current.get('target') or {},
+    }
+    snap = current.get('snapshot') or {}
+    if snap:
+        data['mainHwnd'] = int(snap.get('mainHwnd') or 0)
+        data['pid'] = int(snap.get('pid') or 0)
+        data['javaWindows'] = snap.get('javaWindows') or []
+    if extra:
+        data.update(extra)
+    return data
+
+
+def _progress(job_id: str, code: str, message: str):
+    if not job_id:
+        return
+    try:
+        requests.post(
+            api_url(f'/api/agent/jobs/{job_id}/progress'),
+            headers=cloud_headers(), json={'statusCode': code, 'message': message}, timeout=8
+        ).raise_for_status()
+    except Exception:
+        pass
+
+
+def _norm_target_text(value):
+    return ' '.join(str(value or '').replace('أ','ا').replace('إ','ا').replace('آ','ا').split()).casefold()
+
+
+def _target_matches(expected: dict, actual: dict):
+    if not expected or not actual:
+        return False
+    ek, ak = str(expected.get('kind') or ''), str(actual.get('kind') or '')
+    if ek and ak and ek != ak:
+        return False
+    eh, ah = int(expected.get('windowHwnd') or 0), int(actual.get('windowHwnd') or 0)
+    if eh and ah and eh != ah:
+        return False
+    en, an = _norm_target_text(expected.get('name')), _norm_target_text(actual.get('name'))
+    if en and an and en != an:
+        return False
+    eb, ab = expected.get('bounds') or {}, actual.get('bounds') or {}
+    try:
+        if eb and ab:
+            ecx = int(eb.get('x',0)) + int(eb.get('width',0)) // 2
+            ecy = int(eb.get('y',0)) + int(eb.get('height',0)) // 2
+            acx = int(ab.get('x',0)) + int(ab.get('width',0)) // 2
+            acy = int(ab.get('y',0)) + int(ab.get('height',0)) // 2
+            if abs(ecx-acx) > 80 or abs(ecy-acy) > 80:
+                return False
+    except Exception:
+        pass
+    return True
+
+
+def _current_review_target():
+    try:
+        current = HELPER.call('snapshot')
+        return current, current.get('target') or {}
+    except Exception:
+        return {}, {}
+
+
+def _hwnd_exists(hwnd: int):
+    if not hwnd:
+        return False
+    try:
+        import win32gui
+        return bool(win32gui.IsWindow(int(hwnd)) and win32gui.IsWindowVisible(int(hwnd)))
+    except Exception:
+        try:
+            Desktop(backend='win32').window(handle=int(hwnd)).window_text()
+            return True
+        except Exception:
+            return False
+
+
+def _close_exact_top_window(target: dict):
+    hwnd = int(target.get('windowHwnd') or 0)
+    if not hwnd or target.get('windowMain'):
+        return False
+    if not _hwnd_exists(hwnd):
+        return True
+    try:
+        win = Desktop(backend='win32').window(handle=hwnd)
+        title = (win.window_text() or '').casefold()
+        if 'asycudaworld production server' not in title:
+            return False
+        win.set_focus()
+        time.sleep(.15)
+        win.close()
+    except Exception:
+        return False
+    deadline = time.monotonic() + 4.0
+    while time.monotonic() < deadline:
+        check_cancelled()
+        if not _hwnd_exists(hwnd):
+            return True
+        time.sleep(.15)
+    return False
+
+
+def _close_exact_internal_frame(expected: dict):
+    current, actual = _current_review_target()
+    if not _target_matches(expected, actual):
+        return False
+    b = actual.get('bounds') or {}
+    try:
+        x, y = int(b.get('x') or 0), int(b.get('y') or 0)
+        w, h = int(b.get('width') or 0), int(b.get('height') or 0)
+    except Exception:
+        return False
+    if w < 80 or h < 50:
+        return False
+    win = find_asycuda_window()
+    if not win:
+        return False
+    focus_window(win)
+    # Focus the exact internal frame by its live JAB bounds, then use Swing's
+    # standard Ctrl+F4 close command. These are live coordinates, never saved
+    # desktop coordinates.
+    pyautogui.click(x + max(30, min(w // 3, 140)), y + min(14, max(6, h // 20)))
+    time.sleep(.18)
+    pyautogui.hotkey('ctrl', 'f4')
+    deadline = time.monotonic() + 4.0
+    while time.monotonic() < deadline:
+        check_cancelled()
+        now, target = _current_review_target()
+        if now.get('state') != current.get('state') or not _target_matches(expected, target):
+            return True
+        time.sleep(.18)
+    return False
+
+
+def take_review_screenshot(label: str, metadata: dict | None = None):
+    win = find_asycuda_window()
+    if not win or win.isMinimized:
+        raise NavigationError('screenshot_failed', 'تعذر التقاط نافذة الأسيكودا')
+    left, top = int(win.left), int(win.top)
+    right, bottom = left + int(win.width), top + int(win.height)
+    tr = _target_rect(metadata)
+    if tr:
+        tl, tt, tright, tbottom = tr
+        left, top = min(left, tl), min(top, tt)
+        right, bottom = max(right, tright), max(bottom, tbottom)
+    pad = 8
+    left, top = max(0, left-pad), max(0, top-pad)
+    width, height = max(1, right-left+pad), max(1, bottom-top+pad)
+    img = pyautogui.screenshot(region=(left, top, width, height))
+    safe = ''.join(c for c in str(label) if c.isascii() and (c.isalnum() or c in '-_')) or 'review'
+    filename = f'{safe}_{time.strftime("%Y-%m-%d_%H-%M-%S")}_{time.time_ns() % 1000000:06d}.png'
+    path = SCREENSHOTS / filename
+    img.save(path)
+    return path
 
 def _encode_review_screenshot(path: Path):
     with Image.open(path) as img:
@@ -642,7 +823,7 @@ def _encode_review_screenshot(path: Path):
 
 def _send_review(job_id: str, state: str, metadata: dict | None = None):
     title, message = _review_copy(state)
-    path = take_screenshot('review-' + state.lower())
+    path = take_review_screenshot('review-' + state.lower(), metadata)
     encoded, mime = _encode_review_screenshot(path)
     payload = {
         'state': state,
@@ -676,24 +857,46 @@ def _send_review(job_id: str, state: str, metadata: dict | None = None):
     return review_id
 
 
-def _dismiss_review_screen(state: str):
-    win = find_asycuda_window()
-    if win:
-        focus_window(win)
+def _dismiss_review_screen(state: str, metadata: dict | None = None):
+    metadata = metadata or {}
+    target = metadata.get('target') or {}
+
+    # Native modal captured by the OS watchdog: close exactly the reviewed HWND.
     if state == 'OS_MODAL_BLOCKER':
-        return _dismiss_native_modal()
-    if state == 'NOTIFICATIONS_POPUP':
+        expected = f"{metadata.get('hwnd',0)}:{metadata.get('title','')}:{tuple(metadata.get('rect') or ())}"
+        return _dismiss_native_modal(expected)
+
+    # A separate Java dialog/window: close only that exact HWND, never the main frame.
+    if target.get('kind') in ('java_window', 'jab_popup') and int(target.get('windowHwnd') or 0) and not target.get('windowMain'):
+        return _close_exact_top_window(target)
+
+    # An MDI page such as declaration / pre-declaration / notifications page.
+    if target.get('kind') == 'internal_frame' or state in ('DECLARATION_OPEN', 'PREDECLARATION_OPEN', 'NOTIFICATIONS_PAGE', 'OTHER_PAGE_OPEN'):
+        return _close_exact_internal_frame(target)
+
+    # Embedded notification dialog in the main Swing frame: only use Escape after
+    # confirming that the same reviewed target/state is still present.
+    current, actual = _current_review_target()
+    if state == 'NOTIFICATIONS_POPUP' and current.get('state') == state and (not target or _target_matches(target, actual)):
+        win = find_asycuda_window()
+        if win:
+            focus_window(win)
         pyautogui.press('esc')
-    elif state in ('DECLARATION_OPEN', 'PREDECLARATION_OPEN', 'NOTIFICATIONS_PAGE', 'OTHER_PAGE_OPEN'):
-        # Swing MDI: Ctrl+F4 closes the active internal frame without closing ASYCUDA itself.
-        pyautogui.hotkey('ctrl', 'f4')
-    else:
-        # Unknown dialogs are never confirmed automatically. Esc is the semantic Cancel action.
-        pyautogui.press('esc')
-    time.sleep(.8)
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            check_cancelled()
+            now, now_target = _current_review_target()
+            if now.get('state') != state or (target and not _target_matches(target, now_target)):
+                return True
+            time.sleep(.18)
+        return False
+
+    # Unknown/sensitive states are not closed by a blind key press. The user will
+    # receive a fresh screenshot instead of risking the wrong ASYCUDA window.
+    return False
 
 
-def _wait_for_review_decision(job_id: str, review_id: str, state: str):
+def _wait_for_review_decision(job_id: str, review_id: str, state: str, metadata: dict | None = None):
     while True:
         check_cancelled()
         try:
@@ -707,16 +910,28 @@ def _wait_for_review_decision(job_id: str, review_id: str, state: str):
                 raise NavigationError('cancelled_by_user', 'تم إيقاف الطلب بواسطة المستخدم')
             review = data.get('review') or {}
             if str(review.get('id') or '') != review_id:
-                time.sleep(1.0)
+                time.sleep(.45)
                 continue
             decision = str(review.get('decision') or '')
             if not decision:
-                time.sleep(1.0)
+                time.sleep(.45)
                 continue
             if decision in ('stop', 'keep_and_stop'):
                 raise NavigationError('cancelled_by_user', 'تم إيقاف الطلب بواسطة المستخدم')
             if decision == 'dismiss_and_resume':
-                _dismiss_review_screen(state)
+                _progress(job_id, 'closing_reviewed_screen', 'جاري إغلاق نفس الشاشة التي تمت مراجعتها...')
+                closed = _dismiss_review_screen(state, metadata)
+                if not closed:
+                    log('Reviewed screen did not close or changed before the action; requesting a fresh review.')
+                    try:
+                        requests.post(
+                            api_url(f'/api/agent/jobs/{job_id}/review-resolved'),
+                            headers=cloud_headers(), json={'reviewId': review_id}, timeout=12
+                        ).raise_for_status()
+                    except Exception:
+                        pass
+                    return 'close_failed'
+                _progress(job_id, 'resuming_navigation', 'تم إغلاق الشاشة. جاري المتابعة تلقائياً إلى رقم الإجراء الموحد...')
             elif decision != 'resume':
                 raise NavigationError('invalid_review_decision', 'قرار المراجعة غير مدعوم')
             try:
@@ -769,7 +984,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
                 }
                 log('Native ASYCUDA modal detected; pausing job for review: ' + identity)
                 review_id = _send_review(job_id, 'OS_MODAL_BLOCKER', metadata)
-                decision = _wait_for_review_decision(job_id, review_id, 'OS_MODAL_BLOCKER')
+                decision = _wait_for_review_decision(job_id, review_id, 'OS_MODAL_BLOCKER', metadata)
                 if decision == 'dismiss_and_resume':
                     # _wait_for_review_decision already performs the close. If a
                     # confirmation appears, the next loop catches it as a new review.
@@ -778,12 +993,24 @@ def ensure_unified_procedure_screen(job_id: str = ''):
                 continue
 
         if job_id and state in review_states and skip_review_once != state:
-            review_id = _send_review(job_id, state)
-            decision = _wait_for_review_decision(job_id, review_id, state)
+            metadata = _review_metadata(current, state)
+            review_id = _send_review(job_id, state, metadata)
+            decision = _wait_for_review_decision(job_id, review_id, state, metadata)
             if decision == 'resume':
                 skip_review_once = state
             else:
                 skip_review_once = None
+            if decision == 'close_failed':
+                try:
+                    refreshed = HELPER.call('snapshot')
+                    failed_meta = _review_metadata(refreshed, 'CLOSE_FAILED')
+                    failed_id = _send_review(job_id, 'CLOSE_FAILED', failed_meta)
+                    _wait_for_review_decision(job_id, failed_id, 'CLOSE_FAILED', failed_meta)
+                except NavigationError:
+                    raise
+                except Exception:
+                    pass
+            previous, repeats = None, 0
             continue
         if skip_review_once == state:
             skip_review_once = None
@@ -794,8 +1021,9 @@ def ensure_unified_procedure_screen(job_id: str = ''):
         except NavigationError as exc:
             if exc.code in ('unknown_popup', 'manual_intervention_required') and job_id:
                 state = 'UNKNOWN_POPUP' if exc.code == 'unknown_popup' else 'MANUAL_INTERVENTION'
-                review_id = _send_review(job_id, state)
-                _wait_for_review_decision(job_id, review_id, state)
+                metadata = _review_metadata(current, state)
+                review_id = _send_review(job_id, state, metadata)
+                _wait_for_review_decision(job_id, review_id, state, metadata)
                 continue
             if exc.code not in ('jab_unavailable', 'helper_unavailable'):
                 raise
@@ -806,13 +1034,16 @@ def ensure_unified_procedure_screen(job_id: str = ''):
         if operation == 'dismiss_notifications':
             # In interactive-review mode this should normally have been intercepted above.
             if job_id:
-                review_id = _send_review(job_id, 'NOTIFICATIONS_POPUP')
-                _wait_for_review_decision(job_id, review_id, 'NOTIFICATIONS_POPUP')
+                current = HELPER.call('snapshot')
+                metadata = _review_metadata(current, 'NOTIFICATIONS_POPUP')
+                review_id = _send_review(job_id, 'NOTIFICATIONS_POPUP', metadata)
+                _wait_for_review_decision(job_id, review_id, 'NOTIFICATIONS_POPUP', metadata)
             else:
                 _dismiss_review_screen('NOTIFICATIONS_POPUP')
             continue
         if operation == 'ready':
             log('Unified procedure screen detected and ready.')
+            _progress(job_id, 'unified_procedure_ready', 'تم الوصول إلى شاشة رقم الإجراء الموحد بنجاح.')
             return 'READY'
         if operation == 'login':
             if login_sent:
@@ -865,20 +1096,24 @@ def ensure_unified_procedure_screen(job_id: str = ''):
         # not exposed with a reliable role. This guarantees the operator gets
         # a screenshot and a decision point.
         if job_id and repeats >= 4 and operation == 'wait':
-            review_id = _send_review(job_id, 'UNKNOWN_SCREEN')
-            decision = _wait_for_review_decision(job_id, review_id, 'UNKNOWN_SCREEN')
+            current = HELPER.call('snapshot')
+            metadata = _review_metadata(current, 'UNKNOWN_SCREEN')
+            review_id = _send_review(job_id, 'UNKNOWN_SCREEN', metadata)
+            decision = _wait_for_review_decision(job_id, review_id, 'UNKNOWN_SCREEN', metadata)
             previous, repeats = None, 0
             if decision == 'resume':
                 skip_review_once = 'UNKNOWN_SCREEN'
             continue
         if repeats >= 3 and operation not in ('wait', 'login'):
             if job_id:
-                review_id = _send_review(job_id, 'UNKNOWN_SCREEN')
-                _wait_for_review_decision(job_id, review_id, 'UNKNOWN_SCREEN')
+                current = HELPER.call('snapshot')
+                metadata = _review_metadata(current, 'UNKNOWN_SCREEN')
+                review_id = _send_review(job_id, 'UNKNOWN_SCREEN', metadata)
+                _wait_for_review_decision(job_id, review_id, 'UNKNOWN_SCREEN', metadata)
                 previous, repeats = None, 0
                 continue
             raise NavigationError('navigation_stalled', 'تعذر الوصول إلى شاشة رقم الإجراء الموحد')
-        time.sleep(.5)
+        time.sleep(.25)
     raise NavigationError('navigation_timeout', 'تعذر الوصول إلى شاشة رقم الإجراء الموحد')
 
 def navigate_to_unified(job_id: str = ''):

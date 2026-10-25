@@ -6,8 +6,10 @@ from navigation import plan, detect_state, NavigationError
 from intelligent_planner import IntelligentPlanner
 from screen_memory import ScreenMemory
 
-def node(id, role, name='', parent=None, states=None, action=False):
- return dict(id=str(id),role=role,name=name,parent=None if parent is None else str(parent),states=states or ['showing','enabled'],action=action)
+def node(id, role, name='', parent=None, states=None, action=False, **extra):
+ d=dict(id=str(id),role=role,name=name,parent=None if parent is None else str(parent),states=states or ['showing','enabled'],action=action)
+ d.update(extra)
+ return d
 def snap(*nodes): return {'nodes':list(nodes),'truncated':False}
 
 class PolicyTests(unittest.TestCase):
@@ -154,6 +156,37 @@ class SmartLoginRegressionTests(unittest.TestCase):
         self.assertIn("keyring.set_password(SERVICE, 'asycuda_username'", text)
         self.assertIn("keyring.set_password(SERVICE, 'asycuda_password'", text)
         self.assertNotIn('config.json', text)
+
+
+class ExactReviewTargetTests(unittest.TestCase):
+    def test_popup_target_contains_window_identity(self):
+        s=snap(
+            node(1,'alert','',windowHwnd=222,windowMain=False,windowTitle='ASYCUDAWorld production server',bounds={'x':400,'y':300,'width':300,'height':140}),
+            node(2,'label','لديك رسالة واحدة غير مقروءة. هل تريد فتح صندوق البريد؟',1,windowHwnd=222,windowMain=False,windowTitle='ASYCUDAWorld production server')
+        )
+        info=detect_state(s)
+        self.assertEqual(info['state'],'NOTIFICATIONS_POPUP')
+        self.assertEqual(info['target']['windowHwnd'],222)
+        self.assertEqual(info['target']['kind'],'java_window')
+
+    def test_internal_frame_target_has_live_bounds(self):
+        s=snap(node(1,'internal frame','تفاصيل البيان',states=['showing','selected'],windowHwnd=100,windowMain=True,bounds={'x':200,'y':100,'width':700,'height':500}))
+        info=detect_state(s)
+        self.assertEqual(info['state'],'DECLARATION_OPEN')
+        self.assertEqual(info['target']['kind'],'internal_frame')
+        self.assertEqual(info['target']['bounds']['width'],700)
+
+    def test_agent_uses_exact_review_target_and_verifies_close(self):
+        text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+        self.assertIn("_close_exact_top_window", text)
+        self.assertIn("_close_exact_internal_frame", text)
+        self.assertIn("Reviewed screen did not close or changed before the action", text)
+        self.assertNotIn("_dismiss_review_screen(state)\n", text)
+
+    def test_helper_tags_nodes_with_window_hwnd(self):
+        text=Path(__file__).with_name('jab_helper.py').read_text(encoding='utf-8-sig')
+        self.assertIn("'windowHwnd': int(window_hwnd)", text)
+        self.assertIn("'windowMain': bool(window_main)", text)
 
 
 if __name__=='__main__': unittest.main()
