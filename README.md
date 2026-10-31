@@ -37,3 +37,7 @@ Companies, transactions, stages, finance data and scanner files now use the conf
 
 ## UI/UX V2 — Complete
 تم تحديث جميع الصفحات التشغيلية وإضافة Light/Dark theme (Light افتراضي)، مع الحفاظ على تصميم الهاتف ومزامنة البيانات الحالية. راجع `UIUX-V2-STATUS-AR.md`.
+
+
+## Mobile UX V3
+تم اعتماد App Bar + Bottom Navigation + Drawer متحرك على الهاتف، مع الحفاظ على التصميم المكتبي والثيمين الفاتح والداكن.
