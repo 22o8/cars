@@ -4,6 +4,33 @@ const id = String(route.params.id || '')
 const mobilePin = ref('')
 const pinDraft = ref('')
 const job = ref<any>(null)
+const procedureNumber = computed(() => {
+  const candidates = [
+    job.value?.unifiedProcedureNo,
+    job.value?.review?.metadata?.procedureNo,
+    ...(job.value?.reviewHistory || []).slice().reverse().map((review:any) => review.metadata?.procedureNo)
+  ]
+  return candidates.map(value => String(value ?? '').trim()).find(value => /^[0-9]+$/.test(value)) || ''
+})
+const procedureNumberInput = ref<HTMLInputElement | null>(null)
+const copyStatus = ref('')
+const copyingNumber = ref(false)
+watch(procedureNumber, () => { copyStatus.value = '' })
+
+async function copyProcedureNumber(){
+  const number = procedureNumber.value
+  if(!number || copyingNumber.value) return
+  copyingNumber.value = true
+  copyStatus.value = ''
+  try{
+    await navigator.clipboard.writeText(number)
+    if(procedureNumber.value === number) copyStatus.value = 'تم نسخ رقم الإجراء الموحد'
+  }catch{
+    procedureNumberInput.value?.focus()
+    procedureNumberInput.value?.select()
+    copyStatus.value = 'تعذر النسخ التلقائي. اضغط مطولاً على الرقم المحدد واختر نسخ.'
+  }finally{ copyingNumber.value = false }
+}
 const loading = ref(true)
 const busy = ref(false)
 const errorMessage = ref('')
@@ -135,6 +162,16 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
       <div v-if="job.companyCode"><small>رمز الشركة</small><b>{{job.companyCode}}</b></div>
     </section>
 
+    <section class="card procedure-number-card" aria-labelledby="procedure-number-label">
+      <label id="procedure-number-label" for="procedure-number">رقم الإجراء الموحد</label>
+      <div v-if="procedureNumber" class="procedure-number-row">
+        <input id="procedure-number" ref="procedureNumberInput" class="input procedure-number" :value="procedureNumber" readonly dir="ltr" spellcheck="false" @focus="($event.target as HTMLInputElement).select()">
+        <button type="button" class="btn primary" :disabled="copyingNumber" @click="copyProcedureNumber">{{copyingNumber ? 'جاري النسخ…' : 'نسخ الرقم'}}</button>
+      </div>
+      <p v-else class="number-pending">لم يصل رقم إجراء موحد لهذا الطلب بعد.</p>
+      <p class="copy-status" role="status" aria-live="polite">{{copyStatus}}</p>
+    </section>
+
     <section v-if="job.message && job.status!=='needs_review'" class="card live-progress">
       <strong>حالة التنفيذ الآن</strong>
       <p>{{job.message}}</p>
@@ -197,5 +234,6 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
 </template>
 
 <style scoped>
+.procedure-number-card label{display:block;font-weight:700;margin-bottom:12px}.procedure-number-row{display:flex;align-items:center;gap:12px}.procedure-number{min-width:0;flex:1;font-size:1.35rem;font-weight:700;letter-spacing:.06em;text-align:center;font-variant-numeric:tabular-nums}.procedure-number-row .btn{flex-shrink:0;min-height:44px}.copy-status{margin:8px 0 0;min-height:1.5em;font-size:.9rem}.number-pending{color:#76838b;margin:0}@media(max-width:480px){.procedure-number-row{flex-direction:column;align-items:stretch}.procedure-number-row .btn{width:100%}}
 .detail-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}.detail-summary>div{display:flex;flex-direction:column;gap:5px}.detail-summary small,.review-head p{color:#76838b}.review-card{overflow:hidden}.live-progress{background:#eef8ff;border:1px solid #cde8fa}.live-progress strong{display:block;margin-bottom:6px}.live-progress p{margin:0}.target-info{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#f4f7f8;border-radius:10px;padding:10px 12px;margin:10px 0}.target-info span{color:#758188}.review-notice{background:#fff8e6;border:1px solid #f3ddb2}.review-notice strong{display:block;margin-bottom:8px;color:#8a5b00}.review-notice p{margin:0;color:#6b5a2b}.review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.review-head h2{margin:0 0 5px}.review-head p{margin:0}.review-pill{background:#fff0cc;color:#8a5b00;border-radius:999px;padding:7px 12px;font-weight:700}.review-message{font-size:1rem}.shot-wrap{background:#111;border-radius:14px;padding:8px;display:flex;justify-content:center;max-height:68vh;overflow:auto}.shot-wrap img{max-width:100%;height:auto;border-radius:9px}.shot-empty{padding:34px;text-align:center;background:#f5f7f8;border-radius:12px;color:#7a858b}.decision-actions,.detail-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.history-list{display:grid;gap:9px}.history-list>div{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #edf0f1}.history-review{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.history-shot{margin-top:16px}.pin-unlock-row{display:flex;gap:10px;align-items:center}.pin-unlock-row .input{max-width:320px}@media(max-width:720px){.pin-unlock-row{flex-direction:column;align-items:stretch}.pin-unlock-row .input{max-width:none}.review-head,.history-list>div{flex-direction:column}.decision-actions .btn,.detail-actions .btn{width:100%}}
 </style>

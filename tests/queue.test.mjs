@@ -51,8 +51,8 @@ test('test job requires no company or WhatsApp',async()=>{
 test('invalid PIN does not enqueue',async()=>{
  await assert.rejects(()=>testJob({headers:{}}),{statusCode:401});assert.equal(store.size,0)
 })
-test('production endpoint remains closed',async()=>{
- assert.throws(()=>create(mobile()),{statusCode:403});assert.equal(store.size,0)
+test('production request without company code does not enqueue',async()=>{
+ await assert.rejects(()=>create(mobile()),{statusCode:400});assert.equal(store.size,0)
 })
 test('completion requires screenshot and explicit success evidence',async()=>{
  const {job}=await testJob(mobile());job.status='processing';store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
