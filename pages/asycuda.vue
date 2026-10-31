@@ -43,27 +43,30 @@ function finishSelected(){
 </script>
 
 <template>
-<div class="page-head"><div><h1>السكودة</h1><p>شاشة مستقلة وسريعة لمعاملات ASYCUDA فقط</p></div><div class="right-actions"><input v-model="q" class="input compact" placeholder="بحث سريع"><button class="btn primary" :disabled="!selected.length" @click="finishSelected">✓ إكمال المحدد ({{selected.length}})</button></div></div>
+  <section class="work-hero">
+    <div><span class="eyebrow">مساحة الموظف</span><h1>السكودة</h1><p>أسرع شاشة لإدخال رقم البيان ونسخ بيانات المعاملة إلى ASYCUDA.</p></div>
+    <div class="work-hero-actions"><div class="search-box"><span>⌕</span><input v-model="q" class="input" placeholder="بحث سريع"></div><button class="btn primary" :disabled="!selected.length" @click="finishSelected">✓ إكمال المحدد <b>{{selected.length}}</b></button></div>
+  </section>
 
-<div class="asycuda-summary"><div><small>بانتظار السكودة</small><strong>{{queue.length}}</strong></div><div><small>المحدد الآن</small><strong>{{selected.length}}</strong></div></div>
+  <section class="mini-metrics"><article><span class="metric-symbol">A</span><div><small>بانتظار السكودة</small><b>{{queue.length}}</b></div></article><article><span class="metric-symbol">✓</span><div><small>المحدد الآن</small><b>{{selected.length}}</b></div></article></section>
 
-<div class="card asycuda-card">
-  <div class="asycuda-select-all"><label><input type="checkbox" @change="toggleAll"> تحديد الكل الظاهر</label></div>
-  <div class="asycuda-list">
-    <article v-for="t in queue" :key="t.id" class="asycuda-row">
-      <div class="asycuda-check"><input v-model="selected" type="checkbox" :value="t.id"></div>
-      <div class="asycuda-id"><b>{{t.serial}}</b><small>{{t.companyName}}</small></div>
-      <div class="quick-data">
-        <button class="copy-field" @click="copy(t.companyCode,'رمز الشركة')"><small>رمز الشركة</small><b>{{t.companyCode||'—'}}</b><span>نسخ</span></button>
-        <button class="copy-field" @click="copy(t.unifiedProcedureNo,'رقم الإجراء')"><small>رقم الإجراء</small><b>{{t.unifiedProcedureNo||'—'}}</b><span>نسخ</span></button>
-        <button class="copy-field" @click="copy(t.driverName,'اسم السائق')"><small>السائق</small><b>{{t.driverName}}</b><span>نسخ</span></button>
-        <button class="copy-field" @click="copy(t.vehicleNumber,'رقم السيارة')"><small>السيارة</small><b>{{t.vehicleNumber}}</b><span>نسخ</span></button>
-        <button class="copy-field wide-copy" @click="copy(t.goods,'البضاعة')"><small>البضاعة</small><b>{{t.goods}}</b><span>نسخ</span></button>
-      </div>
-      <div class="asycuda-declaration"><label>رقم البيان</label><input v-model="t.declarationNo" class="input" placeholder="رقم البيان"><div><button class="btn mini" @click="save(t)">حفظ</button><button class="btn ghost mini" @click="copyAll(t)">نسخ الكل</button><button class="btn primary mini" @click="finish(t)">تمت السكودة ✓</button></div></div>
-    </article>
-    <div v-if="!queue.length" class="empty">لا توجد معاملات بانتظار السكودة</div>
-  </div>
-</div>
-<div v-if="toast" class="toast">{{toast}}</div>
+  <section class="card card-v2 asycuda-card asycuda-card-v2">
+    <div class="list-toolbar"><label class="check-all"><input type="checkbox" @change="toggleAll"><span>تحديد الكل الظاهر</span></label><span class="soft-chip">{{queue.length}} معاملة</span></div>
+    <div class="asycuda-list asycuda-list-v2">
+      <article v-for="t in queue" :key="t.id" class="asycuda-row asycuda-row-v2">
+        <div class="asycuda-check"><input v-model="selected" type="checkbox" :value="t.id"></div>
+        <div class="asycuda-id"><b>{{t.serial}}</b><strong>{{t.companyName}}</strong><small>{{t.vehicleNumber}}</small></div>
+        <div class="quick-data quick-data-v2">
+          <button class="copy-field" @click="copy(t.companyCode,'رمز الشركة')"><small>رمز الشركة</small><b>{{t.companyCode||'—'}}</b><span>نسخ</span></button>
+          <button class="copy-field important-copy" @click="copy(t.unifiedProcedureNo,'رقم الإجراء')"><small>رقم الإجراء</small><b>{{t.unifiedProcedureNo||'—'}}</b><span>نسخ</span></button>
+          <button class="copy-field" @click="copy(t.driverName,'اسم السائق')"><small>السائق</small><b>{{t.driverName}}</b><span>نسخ</span></button>
+          <button class="copy-field" @click="copy(t.vehicleNumber,'رقم السيارة')"><small>السيارة</small><b>{{t.vehicleNumber}}</b><span>نسخ</span></button>
+          <button class="copy-field wide-copy" @click="copy(t.goods,'البضاعة')"><small>البضاعة</small><b>{{t.goods}}</b><span>نسخ</span></button>
+        </div>
+        <div class="asycuda-declaration declaration-v2"><label>رقم البيان</label><input v-model="t.declarationNo" class="input input-lg" placeholder="أدخل رقم البيان"><div><button class="btn mini ghost" @click="copyAll(t)">نسخ الكل</button><button class="btn mini" @click="save(t)">حفظ</button><button class="btn primary mini" @click="finish(t)">تمت السكودة ✓</button></div></div>
+      </article>
+      <div v-if="!queue.length" class="empty empty-v2"><b>لا توجد معاملات بانتظار السكودة</b><span>أي معاملة تصل لهذه المرحلة ستظهر هنا تلقائياً.</span></div>
+    </div>
+  </section>
+  <div v-if="toast" class="toast">{{toast}}</div>
 </template>

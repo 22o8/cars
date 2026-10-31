@@ -227,102 +227,58 @@ watch([mobilePin, whatsappNumber], savePrefs)
 </script>
 
 <template>
-  <div class="page-head unified-head">
-    <div><h1>رقم الإجراء الموحد</h1><p>أرسل الطلب من الهاتف، وجهاز الأسيكودا في المكتب ينفذه تلقائياً</p></div>
-    <div class="agent-state" :class="agentOnline?'online':'offline'">
-      <span></span>
-      <template v-if="agentState==='ONLINE'">جهاز الأسيكودا متصل</template>
-      <template v-else-if="agentState==='AUTH_ERROR'">رمز دخول الهاتف مطلوب أو غير صحيح</template>
-      <template v-else-if="agentState==='SERVER_ERROR'">تعذر فحص حالة الجهاز</template>
-      <template v-else-if="agentState==='AGENT_ERROR'">خطأ في برنامج الجهاز</template>
-      <template v-else-if="agentState==='checking'">جاري فحص الاتصال</template>
-      <template v-else>جهاز الأسيكودا غير متصل</template>
-      <small v-if="lastSeen">آخر اتصال: {{fmt(lastSeen)}}<template v-if="agentVersion"> · Agent {{agentVersion}}</template></small>
-    </div>
-  </div>
-
-  <div v-if="errorMessage" class="notice danger">{{errorMessage}}</div>
-  <div v-if="successMessage" class="notice success">{{successMessage}}</div>
-
-  <section class="card">
-    <div class="field"><label>PIN — رمز دخول الهاتف</label><input v-model="mobilePin" class="input" type="password" inputmode="numeric" autocomplete="off"></div>
-    <h3>اختبار التنقل الآمن</h3>
-    <p>يفتح شاشة رقم الإجراء الموحد ويلتقط صورة فقط، دون رمز شركة أو واتساب ودون إنشاء إجراء.</p>
-    <button class="btn primary" :disabled="sending" @click="submitTest">للتجربة</button>
-  </section>
-  <section class="card mobile-unified-card">
-    <h3>التنفيذ الحقيقي</h3>
-    <p>ينشئ رقم إجراء موحد حقيقي. بعد ظهور الرقم يتوقف النظام ويعرض صورة النتيجة بانتظار موافقتك على الإنجاز النهائي.</p>
-    <div class="mobile-form-grid">
-      <div class="field"><label>شركة محفوظة — اختياري</label><select class="input" @change="chooseCompany(($event.target as HTMLSelectElement).value)"><option value="">اختر الشركة</option><option v-for="c in companies" :key="c.id" :value="c.id">{{c.name}}</option></select></div>
-      <div class="field"><label>رمز الشركة</label><input v-model="companyCode" class="input" inputmode="numeric" placeholder="7400XXXX"></div>
-      <div class="field"><label>رقم واتساب — اختياري حالياً</label><input v-model="whatsappNumber" class="input" inputmode="tel" placeholder="9647XXXXXXXXX"></div>
-      <div class="field optional-company"><label>اسم الشركة — اختياري</label><input v-model="companyName" class="input" placeholder="يظهر في رسالة واتساب"></div>
-      <button class="btn primary big-mobile-action" :disabled="sending || !companyCode.trim()" @click="submitCloud()">{{sending?'جاري الإرسال...':'إنشاء رقم إجراء حقيقي'}}</button>
+  <section class="unified-hero">
+    <div><span class="eyebrow">تشغيل عن بُعد</span><h1>رقم الإجراء الموحد</h1><p>تحكم مباشر وآمن بجهاز ASYCUDA من الهاتف أو الحاسبة.</p></div>
+    <div class="agent-state agent-state-v2" :class="agentOnline?'online':'offline'">
+      <span class="agent-led"></span><div><b><template v-if="agentState==='ONLINE'">جهاز ASYCUDA متصل</template><template v-else-if="agentState==='AUTH_ERROR'">رمز الدخول مطلوب</template><template v-else-if="agentState==='SERVER_ERROR'">تعذر فحص الجهاز</template><template v-else-if="agentState==='AGENT_ERROR'">خطأ في برنامج الجهاز</template><template v-else-if="agentState==='checking'">جاري فحص الاتصال</template><template v-else>جهاز ASYCUDA غير متصل</template></b><small v-if="lastSeen">آخر اتصال {{fmt(lastSeen)}}<template v-if="agentVersion"> · Agent {{agentVersion}}</template></small></div>
     </div>
   </section>
 
-  <section v-if="localQueue.length" class="card">
-    <div class="section-title"><div><h3 style="margin:0">معاملات النظام بانتظار الإجراء</h3><small class="muted">اضغط إرسال بدون إعادة كتابة رمز الشركة</small></div></div>
-    <div class="quick-tx-list">
-      <article v-for="t in localQueue" :key="t.id" class="quick-tx-row">
-        <div><b>{{t.serial}}</b><strong>{{t.companyName}}</strong><small>{{t.companyCode || 'رمز الشركة غير مضاف'}} — {{t.vehicleNumber}}</small></div>
-        <button class="btn primary" :disabled="sending || !t.companyCode?.trim()" @click="submitTransaction(t)">إنشاء رقم الإجراء</button>
-      </article>
+  <div v-if="errorMessage" class="notice danger notice-v2">{{errorMessage}}</div>
+  <div v-if="successMessage" class="notice success notice-v2">{{successMessage}}</div>
+
+  <section class="unified-control-grid">
+    <article class="card card-v2 access-card">
+      <div class="card-kicker"><span class="step-number">01</span><div><small>الوصول الآمن</small><h2>ربط الهاتف بالجهاز</h2></div></div>
+      <div class="field"><label>PIN — رمز دخول الهاتف</label><input v-model="mobilePin" class="input input-lg pin-input" type="password" inputmode="numeric" autocomplete="off" placeholder="••••"></div>
+      <div class="secure-note"><span>●</span><p>يُحفظ الرمز داخل جلسة المتصفح فقط ولا يظهر ضمن قائمة الطلبات.</p></div>
+    </article>
+
+    <article class="card card-v2 test-card-v2">
+      <div class="card-kicker"><span class="step-number neutral">اختبار</span><div><small>بدون إنشاء حقيقي</small><h2>اختبار التنقل الآمن</h2></div></div>
+      <p>يفتح ASYCUDA ويصل إلى شاشة رقم الإجراء الموحد ثم يلتقط Screenshot فقط.</p>
+      <button class="btn ghost btn-wide" :disabled="sending || !mobilePin.trim()" @click="submitTest">تشغيل اختبار آمن</button>
+    </article>
+  </section>
+
+  <section class="card card-v2 execution-card">
+    <div class="execution-head"><div class="card-kicker"><span class="step-number">02</span><div><small>التنفيذ الحقيقي</small><h2>إنشاء رقم إجراء موحد</h2></div></div><span class="risk-chip">ينتظر موافقتك قبل الإنجاز النهائي</span></div>
+    <p class="execution-intro">اختر الشركة أو اكتب رمزها مباشرة. بعد ظهور الرقم يتوقف النظام تلقائياً ويعرض النتيجة داخل تفاصيل الطلب.</p>
+    <div class="execution-form">
+      <div class="field"><label>شركة محفوظة</label><select class="input input-lg" @change="chooseCompany(($event.target as HTMLSelectElement).value)"><option value="">اختر الشركة</option><option v-for="c in companies" :key="c.id" :value="c.id">{{c.name}}</option></select></div>
+      <div class="field primary-field"><label>رمز الشركة</label><input v-model="companyCode" class="input input-lg code-input" inputmode="numeric" placeholder="7400XXXX"></div>
+      <div class="field"><label>رقم واتساب <span>اختياري</span></label><input v-model="whatsappNumber" class="input input-lg" inputmode="tel" placeholder="9647XXXXXXXXX"></div>
+      <div class="field optional-company"><label>اسم الشركة <span>اختياري</span></label><input v-model="companyName" class="input input-lg" placeholder="اسم الشركة"></div>
+      <button class="btn primary btn-execute" :disabled="sending || !companyCode.trim() || !mobilePin.trim()" @click="submitCloud()"><span>{{sending?'جاري الإرسال...':'إنشاء رقم إجراء حقيقي'}}</span><small v-if="!sending">إرسال إلى جهاز ASYCUDA ←</small></button>
     </div>
   </section>
 
-  <section class="card cloud-jobs-card">
-    <div class="section-title">
-      <div><h3 style="margin:0">آخر الطلبات</h3><small class="muted">تتحدث تلقائياً كل عدة ثواني</small></div>
-      <div class="right-actions">
-        <button class="btn mini danger" :disabled="loadingJobs || !jobs.some(j=>['pending','processing','needs_review','cancelling'].includes(j.status))" @click="cancelAll">إيقاف الكل</button>
-        <button class="btn mini ghost" :disabled="loadingJobs || !jobs.length" @click="clearAll">حذف الطلبات</button>
-        <button class="btn mini ghost" :disabled="loadingJobs" @click="refreshAll">تحديث</button>
-      </div>
-    </div>
+  <section v-if="localQueue.length" class="card card-v2 queue-card">
+    <div class="section-title section-title-v2"><div><span class="eyebrow">جاهزة للإرسال</span><h2>معاملات بانتظار رقم الإجراء</h2></div><span class="soft-chip">{{localQueue.length}} معاملة</span></div>
+    <div class="quick-tx-list quick-tx-list-v2"><article v-for="t in localQueue" :key="t.id" class="quick-tx-row quick-tx-row-v2"><div class="quick-tx-info"><b>{{t.serial}}</b><strong>{{t.companyName}}</strong><small>{{t.vehicleNumber}} · {{t.companyCode || 'رمز الشركة غير مضاف'}}</small></div><button class="btn primary" :disabled="sending || !t.companyCode?.trim()" @click="submitTransaction(t)">إنشاء الرقم</button></article></div>
+  </section>
 
-    <div v-if="!mobilePin" class="empty">أدخل رمز دخول الهاتف حتى تظهر الطلبات.</div>
-    <div v-else-if="!jobs.length && !loadingJobs" class="empty">لا توجد طلبات حتى الآن.</div>
-    <div v-else class="cloud-job-list">
-      <article v-for="job in jobs" :key="job.id" class="cloud-job-row">
-        <div class="cloud-job-main">
-          <template v-if="(job.kind==='test' || job.kind==='test_navigation')">
-            <b>اختبار الاتصال بالأسيكودا</b>
-            <small>يفتح الأسيكودا ويصل إلى صفحة رقم الإجراء الموحد ويلتقط Screenshot فقط.</small>
-          </template>
-          <template v-else>
-            <b>{{job.companyName || `شركة ${job.companyCode}`}}</b>
-            <small>رمز الشركة: {{job.companyCode}} · واتساب: {{job.whatsappNumber}}</small>
-            <small v-if="job.serial">المعاملة: {{job.serial}}</small>
-          </template>
-        </div>
+  <section class="card card-v2 jobs-card-v2">
+    <div class="section-title section-title-v2 jobs-head"><div><span class="eyebrow">المراقبة الحية</span><h2>آخر الطلبات</h2><small>تتحدث تلقائياً كل عدة ثواني</small></div><div class="right-actions"><button class="btn mini danger" :disabled="loadingJobs || !jobs.some(j=>['pending','processing','needs_review','cancelling'].includes(j.status))" @click="cancelAll">إيقاف الكل</button><button class="btn mini ghost" :disabled="loadingJobs || !jobs.length" @click="clearAll">حذف الطلبات</button><button class="btn mini ghost" :disabled="loadingJobs" @click="refreshAll">تحديث</button></div></div>
+    <div v-if="!mobilePin" class="empty empty-v2"><b>أدخل PIN أولاً</b><span>بعد إدخاله تظهر الطلبات وحالة جهاز ASYCUDA.</span></div>
+    <div v-else-if="!jobs.length && !loadingJobs" class="empty empty-v2"><b>لا توجد طلبات حتى الآن</b><span>أنشئ اختباراً آمناً أو ابدأ تنفيذ طلب حقيقي.</span></div>
+    <div v-else class="cloud-job-list cloud-job-list-v2">
+      <article v-for="job in jobs" :key="job.id" class="cloud-job-row cloud-job-row-v2" :class="`job-${job.status}`">
+        <div class="job-status-rail"></div>
+        <div class="cloud-job-main"><template v-if="(job.kind==='test' || job.kind==='test_navigation')"><b>اختبار الاتصال بـ ASYCUDA</b><small>تنقل آمن بدون إنشاء رقم حقيقي</small></template><template v-else><b>{{job.companyName || `شركة ${job.companyCode}`}}</b><small>رمز الشركة {{job.companyCode}}<template v-if="job.serial"> · المعاملة {{job.serial}}</template></small></template></div>
         <div class="cloud-job-state" :class="statusClass(job.status)">{{statusLabel(job.status)}}</div>
-        <div class="cloud-job-result">
-          <template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')">
-            <small>نتيجة الاختبار</small><b>نجح الاختبار — لم يتم إنشاء أي إجراء موحد</b>
-            <span v-if="job.screenshotTaken">تم أخذ Screenshot على جهاز الأسيكودا<span v-if="job.screenshotName">: {{job.screenshotName}}</span></span>
-          </template>
-          <template v-else-if="job.status==='done'">
-            <small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع الصورة المرسلة'}}</b>
-            <span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم التنفيذ بدون إرسال واتساب'}}</span>
-          </template>
-          <template v-else-if="job.status==='cancelled'">
-            <small>الحالة</small><b>تم إيقاف الطلب بواسطة المستخدم</b>
-          </template>
-          <template v-else-if="job.status==='failed'">
-            <small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b>
-          </template>
-          <template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>{{job.review?.message || 'افتح تفاصيل الطلب لمشاهدة الصورة واتخاذ القرار.'}}</span></template>
-          <template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template>
-          <template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template>
-        </div>
-        <div class="cloud-job-actions">
-          <button class="btn primary" @click="openDetails(job)">{{job.status==='needs_review'?'عرض الصورة واتخاذ القرار':'فتح التفاصيل'}}</button>
-          <button v-if="job.status==='pending' || job.status==='processing' || job.status==='needs_review' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button>
-          <button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button>
-          <button class="btn ghost" @click="deleteJob(job)">حذف</button>
-        </div>
+        <div class="cloud-job-result"><template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')"><small>النتيجة</small><b>نجح الاختبار</b><span>لم يتم إنشاء أي إجراء موحد</span></template><template v-else-if="job.status==='done'"><small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع النتيجة'}}</b><span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم حفظ النتيجة داخل النظام'}}</span></template><template v-else-if="job.status==='cancelled'"><small>الحالة</small><b>تم إيقاف الطلب</b></template><template v-else-if="job.status==='failed'"><small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b></template><template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>افتح التفاصيل لمشاهدة الصورة واتخاذ القرار.</span></template><template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template><template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template></div>
+        <div class="cloud-job-actions"><button class="btn primary" @click="openDetails(job)">{{job.status==='needs_review'?'عرض واتخاذ القرار':'فتح التفاصيل'}}</button><button v-if="job.status==='pending' || job.status==='processing' || job.status==='needs_review' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button><button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button><button class="btn ghost" @click="deleteJob(job)">حذف</button></div>
       </article>
     </div>
   </section>

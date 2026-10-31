@@ -1,4 +1,7 @@
 <script setup lang="ts">
 const {users,roleLabels,currentUser}=useAuth()
 </script>
-<template><div class="page-head"><div><h1>المستخدمون والصلاحيات</h1><p>كل مرحلة مرتبطة بصلاحية وظيفية مستقلة</p></div></div><div class="card"><div class="table-wrap"><table class="table" style="min-width:650px"><thead><tr><th>المستخدم</th><th>الدور</th><th>الحالة</th></tr></thead><tbody><tr v-for="u in users" :key="u.id"><td>{{u.name}} <span v-if="u.id===currentUser.id" class="pill">الحالي</span></td><td>{{roleLabels[u.role]}}</td><td><StatusBadge :status="u.active?'done':'blocked'"/></td></tr></tbody></table></div></div></template>
+<template>
+  <section class="work-hero"><div><span class="eyebrow">إدارة الوصول</span><h1>المستخدمون والصلاحيات</h1><p>كل موظف يرى فقط المرحلة المرتبطة بدوره داخل النظام.</p></div><span class="soft-chip">{{users.length}} مستخدم</span></section>
+  <section class="user-grid"><article v-for="u in users" :key="u.id" class="card card-v2 user-card-v2" :class="{current:u.id===currentUser.id}"><div class="user-card-top"><div class="user-avatar-lg">{{u.name?.slice(0,1) || 'م'}}</div><div><b>{{u.name}}</b><small>{{roleLabels[u.role]}}</small></div><span v-if="u.id===currentUser.id" class="current-chip">الحالي</span></div><div class="user-card-status"><span :class="u.active?'on':'off'"></span><b>{{u.active?'نشط':'غير نشط'}}</b></div></article></section>
+</template>
