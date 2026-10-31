@@ -12,6 +12,9 @@ export default defineNuxtConfig({
       ],
       link: [
         { rel: 'manifest', href: '/manifest.webmanifest' }
+      ],
+      script: [
+        { src: '/boot-recovery.js' }
       ]
     }
   },

@@ -253,3 +253,13 @@ html[data-theme="dark"] .create-tip{background:rgba(42,157,144,.08)}
 html[data-theme="dark"] .mobile-appbar,html[data-theme="dark"] .mobile-bottom-nav{background:color-mix(in srgb,var(--surface) 94%,transparent)}
 html[data-theme="dark"] .mobile-drawer{background:var(--surface)}
 @media(max-width:760px){.sidebar-v2.desktop-sidebar{display:none!important}}
+
+/* Desktop recovery hardening V3.1 */
+@media (min-width:761px){
+  .shell-v2{display:grid!important;grid-template-columns:270px minmax(0,1fr)!important;min-height:100vh!important}
+  .desktop-sidebar{display:flex!important;position:sticky!important;top:0!important;height:100vh!important}
+  .workspace{display:block!important;min-width:0!important;min-height:100vh!important}
+  .mobile-appbar,.mobile-bottom-nav,.mobile-drawer,.mobile-drawer-backdrop{display:none!important}
+  .main{display:block!important;min-width:0!important}
+  .content-wrap{display:block!important;width:min(1500px,100%)!important;margin:0 auto!important}
+}
