@@ -69,29 +69,47 @@ async function openMerged(tx:Transaction){
 }
 async function downloadMerged(tx:Transaction){const m=mergedFile(tx);if(m)await downloadFile(m.id,m.name)}
 </script>
+
 <template>
-<div class="page-head"><div><h1>الأرشفة</h1><p>سكنر الأرشفة والقيم — ملفات الأقسام تُجمع تلقائياً في ملف PDF واحد</p></div></div>
+<section class="archive-page-v3">
+  <header class="ops-header archive-header-v3">
+    <div><div class="eyebrow">إدارة السجلات</div><h1>الأرشفة</h1><p>استكمال ملف المعاملة، تثبيت القيم المالية، وتجميع مستندات الأقسام في PDF موحد.</p></div>
+    <div class="archive-header-meta"><span>بانتظار الأرشفة</span><strong>{{pending.length}}</strong></div>
+  </header>
 
-<div class="card" style="margin-bottom:16px"><div class="section-title"><div><h3 style="margin:0">بانتظار الأرشفة</h3><small class="muted">{{pending.length}} معاملة</small></div></div>
-  <div class="archive-work-list">
-    <div v-for="t in pending" :key="t.id" class="archive-work-row archive-work-row-v4">
-      <div class="work-id"><b>{{t.serial}}</b><small>{{t.companyName}} — {{t.vehicleNumber}}</small><span class="source-files-badge">ملفات الأقسام: {{priorScans(t).length}}</span><small v-if="priorScans(t).length" class="muted">{{scanSummary(t)}}</small></div>
-      <div class="field"><label>الأسعار / قيمة البضاعة</label><input v-model.number="t.finance.invoiceValue" type="number" class="input"></div>
-      <div class="field"><label>الضريبة</label><input v-model.number="t.finance.tax" type="number" class="input"></div>
-      <div class="field"><label>الرسوم</label><input v-model.number="t.finance.customsFees" type="number" class="input"></div>
-      <div class="archive-total"><small>الإجمالي</small><b>{{fmt(archiveGrandTotal(t))}} د.ع</b></div>
-      <div class="archive-scan-actions"><label class="btn scan-btn">رفع سكنر الأرشفة<input type="file" multiple accept="application/pdf,image/*" hidden @change="uploadScan(t,$event)"></label><span class="pill">{{archiveScans(t).length}} ملف</span></div>
-      <button class="btn primary" :disabled="busy===t.id" @click="archiveNow(t)">{{busy===t.id?'جاري التجميع...':'أرشفة وتجميع PDF'}}</button>
-    </div>
-    <div v-if="!pending.length" class="empty">لا توجد معاملات بانتظار الأرشفة</div>
+  <div class="archive-kpis-v3">
+    <article><span>المعاملات المؤرشفة</span><strong>{{allArchived.length}}</strong><small>إجمالي السجل</small></article>
+    <article><span>قيمة النتائج</span><strong>{{fmt(filteredSums.price)}}</strong><small>د.ع</small></article>
+    <article><span>الضريبة والرسوم</span><strong>{{fmt(filteredSums.tax+filteredSums.fees)}}</strong><small>د.ع</small></article>
+    <article class="total"><span>الإجمالي التراكمي</span><strong>{{fmt(allSums.total)}}</strong><small>د.ع</small></article>
   </div>
-</div>
 
-<div class="card" style="margin-bottom:16px"><div class="section-title"><h3 style="margin:0">الأرشيف والبحث</h3></div><div class="filters"><input v-model="q" class="input" placeholder="بحث: شركة، سيارة، سائق، إجراء، بيان" style="min-width:300px"><input v-model="from" type="date" class="input"><input v-model="to" type="date" class="input"><button class="btn" @click="q='';from='';to=''">مسح</button></div></div>
-<div class="grid stats archive-stats"><div class="stat"><small>عدد النتائج</small><strong>{{archived.length}}</strong></div><div class="stat"><small>الأسعار ضمن النتائج</small><strong>{{fmt(filteredSums.price)}} د.ع</strong></div><div class="stat"><small>الضريبة ضمن النتائج</small><strong>{{fmt(filteredSums.tax)}} د.ع</strong></div><div class="stat"><small>الرسوم ضمن النتائج</small><strong>{{fmt(filteredSums.fees)}} د.ع</strong></div><div class="stat highlight"><small>إجمالي النتائج</small><strong>{{fmt(filteredSums.total)}} د.ع</strong></div><div class="stat"><small>الإجمالي لجميع التواريخ</small><strong>{{fmt(allSums.total)}} د.ع</strong></div></div>
+  <section class="card archive-intake-card">
+    <div class="section-title archive-section-head"><div><h2>قائمة الأرشفة الحالية</h2><p>{{pending.length}} معاملة وصلت إلى المرحلة الأخيرة وتنتظر الإغلاق.</p></div></div>
+    <div class="archive-work-list archive-work-list-v3">
+      <article v-for="t in pending" :key="t.id" class="archive-item-v3">
+        <header><div><b>{{t.serial}}</b><span>{{t.companyName}}</span><small>{{t.vehicleNumber}} · {{t.driverName}}</small></div><div class="archive-item-files"><span>ملفات الأقسام</span><strong>{{priorScans(t).length}}</strong></div></header>
+        <div v-if="priorScans(t).length" class="archive-source-summary">{{scanSummary(t)}}</div>
+        <div class="archive-input-grid"><div class="field"><label>قيمة البضاعة</label><div class="money-input"><input v-model.number="t.finance.invoiceValue" type="number" class="input"><span>د.ع</span></div></div><div class="field"><label>الضريبة</label><div class="money-input"><input v-model.number="t.finance.tax" type="number" class="input"><span>د.ع</span></div></div><div class="field"><label>الرسوم</label><div class="money-input"><input v-model.number="t.finance.customsFees" type="number" class="input"><span>د.ع</span></div></div></div>
+        <div class="archive-item-footer"><div class="archive-item-total"><span>الإجمالي</span><strong>{{fmt(archiveGrandTotal(t))}} <small>د.ع</small></strong></div><div class="archive-upload"><label class="btn ghost">رفع سكنر الأرشفة<input type="file" multiple accept="application/pdf,image/*" hidden @change="uploadScan(t,$event)"></label><span>{{archiveScans(t).length}} ملف</span></div><button class="btn primary" :disabled="busy===t.id" @click="archiveNow(t)">{{busy===t.id?'جاري التجميع...':'أرشفة وإغلاق المعاملة'}}</button></div>
+      </article>
+      <div v-if="!pending.length" class="empty-state"><b>لا توجد معاملات بانتظار الأرشفة</b><span>المعاملات الجديدة تظهر هنا تلقائياً بعد وصولها لهذه المرحلة.</span></div>
+    </div>
+  </section>
 
-<div class="card" style="margin-bottom:16px"><h3>الإجمالي حسب تاريخ الأرشفة</h3><div class="table-wrap"><table class="table"><thead><tr><th>التاريخ</th><th>عدد المعاملات</th><th>الأسعار</th><th>الضريبة</th><th>الرسوم</th><th>الإجمالي</th></tr></thead><tbody><tr v-for="r in daily" :key="r[0]"><td>{{r[0]}}</td><td>{{r[1].count}}</td><td>{{fmt(r[1].price)}}</td><td>{{fmt(r[1].tax)}}</td><td>{{fmt(r[1].fees)}}</td><td><b>{{fmt(r[1].total)}}</b></td></tr><tr v-if="!daily.length"><td colspan="6" class="empty">لا توجد بيانات</td></tr></tbody></table></div></div>
+  <section class="card archive-search-card">
+    <div class="archive-search-head"><div><h2>السجل المؤرشف</h2><p>بحث موحد حسب الشركة، المركبة، السائق، رقم البيان أو الإجراء.</p></div><button class="btn ghost mini" @click="q='';from='';to=''">مسح الفلاتر</button></div>
+    <div class="archive-filters-v3"><div class="search-field archive-search-field"><span>⌕</span><input v-model="q" placeholder="اكتب للبحث في الأرشيف"></div><div class="date-filter"><label>من</label><input v-model="from" type="date" class="input"></div><div class="date-filter"><label>إلى</label><input v-model="to" type="date" class="input"></div></div>
+    <div class="archive-result-summary"><span>النتائج <b>{{archived.length}}</b></span><span>القيمة <b>{{fmt(filteredSums.price)}} د.ع</b></span><span>الضريبة <b>{{fmt(filteredSums.tax)}} د.ع</b></span><span>الرسوم <b>{{fmt(filteredSums.fees)}} د.ع</b></span><span class="strong">الإجمالي <b>{{fmt(filteredSums.total)}} د.ع</b></span></div>
+  </section>
 
-<div class="card"><h3>المعاملات المؤرشفة</h3><div class="table-wrap"><table class="table"><thead><tr><th>المعاملة</th><th>تاريخ الأرشفة</th><th>الشركة</th><th>السيارة</th><th>البيان</th><th>الأسعار</th><th>الضريبة</th><th>الرسوم</th><th>الإجمالي</th><th>الملف الموحد</th></tr></thead><tbody><tr v-for="t in archived" :key="t.id"><td><b>{{t.serial}}</b></td><td>{{new Date(t.archivedAt||t.updatedAt).toLocaleDateString('ar-IQ')}}</td><td>{{t.companyName}}</td><td>{{t.vehicleNumber}}</td><td>{{t.declarationNo||'—'}}</td><td>{{fmt(t.finance.invoiceValue)}}</td><td>{{fmt(t.finance.tax)}}</td><td>{{fmt(t.finance.customsFees)}}</td><td><b>{{fmt(archiveGrandTotal(t))}}</b></td><td><div class="file-actions"><button class="btn ghost mini" :disabled="busy===t.id" @click="openMerged(t)">فتح</button><button v-if="mergedFile(t)" class="btn ghost mini" @click="downloadMerged(t)">تنزيل</button></div></td></tr><tr v-if="!archived.length"><td colspan="10" class="empty">لا توجد معاملات مؤرشفة ضمن البحث</td></tr></tbody></table></div></div>
-<div v-if="toast" class="toast">{{toast}}</div>
+  <div class="archive-data-grid">
+    <section class="card archive-daily-card"><div class="card-title-line"><h3>الإجمالي حسب التاريخ</h3><span>{{daily.length}} يوم</span></div><div class="table-shell desktop-table"><table class="table archive-table-v3"><thead><tr><th>التاريخ</th><th>المعاملات</th><th>القيمة</th><th>الضريبة</th><th>الرسوم</th><th>الإجمالي</th></tr></thead><tbody><tr v-for="r in daily" :key="r[0]"><td><b>{{r[0]}}</b></td><td>{{r[1].count}}</td><td>{{fmt(r[1].price)}}</td><td>{{fmt(r[1].tax)}}</td><td>{{fmt(r[1].fees)}}</td><td><b>{{fmt(r[1].total)}}</b></td></tr><tr v-if="!daily.length"><td colspan="6"><div class="empty-state compact"><b>لا توجد بيانات</b></div></td></tr></tbody></table></div><div class="mobile-cards archive-day-cards"><article v-for="r in daily" :key="r[0]"><div><b>{{r[0]}}</b><span>{{r[1].count}} معاملة</span></div><strong>{{fmt(r[1].total)}} <small>د.ع</small></strong></article></div></section>
+
+    <section class="card archive-records-card"><div class="card-title-line"><h3>المعاملات المؤرشفة</h3><span>{{archived.length}} نتيجة</span></div><div class="table-shell desktop-table"><table class="table archive-table-v3 records"><thead><tr><th>المعاملة</th><th>التاريخ</th><th>الشركة / السيارة</th><th>البيان</th><th>القيمة</th><th>الإجمالي</th><th>الملف</th></tr></thead><tbody><tr v-for="t in archived" :key="t.id"><td><b>{{t.serial}}</b></td><td>{{new Date(t.archivedAt||t.updatedAt).toLocaleDateString('ar-IQ')}}</td><td><b class="cell-primary">{{t.companyName}}</b><small>{{t.vehicleNumber}}</small></td><td>{{t.declarationNo||'—'}}</td><td>{{fmt(t.finance.invoiceValue)}}</td><td><b>{{fmt(archiveGrandTotal(t))}}</b></td><td><div class="file-actions"><button class="btn ghost mini" :disabled="busy===t.id" @click="openMerged(t)">فتح</button><button v-if="mergedFile(t)" class="btn ghost mini" @click="downloadMerged(t)">تنزيل</button></div></td></tr><tr v-if="!archived.length"><td colspan="7"><div class="empty-state compact"><b>لا توجد معاملات ضمن البحث</b></div></td></tr></tbody></table></div>
+      <div class="mobile-cards archive-record-cards"><article v-for="t in archived" :key="t.id"><div class="archive-record-top"><div><b>{{t.serial}}</b><small>{{t.companyName}}</small></div><strong>{{fmt(archiveGrandTotal(t))}} <small>د.ع</small></strong></div><div class="archive-record-data"><span>{{t.vehicleNumber}}</span><span>{{t.declarationNo||'بدون بيان'}}</span><span>{{new Date(t.archivedAt||t.updatedAt).toLocaleDateString('ar-IQ')}}</span></div><div class="archive-record-actions"><button class="btn ghost" @click="openMerged(t)">فتح الملف</button><button v-if="mergedFile(t)" class="btn ghost" @click="downloadMerged(t)">تنزيل</button></div></article></div>
+    </section>
+  </div>
+  <div v-if="toast" class="toast">{{toast}}</div>
+</section>
 </template>

@@ -33,3 +33,7 @@ Login screen fallback now detects the live small ASYCUDA login window and fills/
 
 ## Cloud sync update
 Companies, transactions, stages, finance data and scanner files now use the configured Upstash Redis as a shared source across devices. Local browser storage is retained only as an offline/cache fallback. See `CLOUD-SYNC-AR.md`.
+
+
+## UI/UX V2 — Complete
+تم تحديث جميع الصفحات التشغيلية وإضافة Light/Dark theme (Light افتراضي)، مع الحفاظ على تصميم الهاتف ومزامنة البيانات الحالية. راجع `UIUX-V2-STATUS-AR.md`.

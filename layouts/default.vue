@@ -3,6 +3,20 @@ import { roleStageMap } from '~/utils/stages'
 const route = useRoute()
 const { users, currentUserId, currentUser, roleLabels, homePath } = useAuth()
 
+const theme = useState<'light'|'dark'>('ui-theme', () => 'light')
+function applyTheme(value:'light'|'dark') {
+  theme.value = value
+  if (import.meta.client) {
+    document.documentElement.dataset.theme = value
+    localStorage.setItem('tarabil.ui.theme', value)
+  }
+}
+function toggleTheme(){ applyTheme(theme.value === 'light' ? 'dark' : 'light') }
+onMounted(() => {
+  const saved = localStorage.getItem('tarabil.ui.theme')
+  applyTheme(saved === 'dark' ? 'dark' : 'light')
+})
+
 const adminNav = [
   { to: '/', path: '/', label: 'الرئيسية', icon: '⌂' },
   { to: '/transactions', path: '/transactions', label: 'ساحة العمل', icon: '▤' },
@@ -33,7 +47,7 @@ watch(() => currentUser.value.role, async () => {
     <aside class="sidebar sidebar-v2">
       <div class="brand brand-v2">
         <div class="brand-mark">ط</div>
-        <div class="brand-copy"><b>طريبيل</b><small>نظام متابعة المعاملات</small></div>
+        <div class="brand-copy"><b>طريبيل</b><small>متابعة المعاملات</small></div>
         <span class="brand-live"><i></i> مباشر</span>
       </div>
       <div class="nav-caption">التنقل</div>
@@ -42,6 +56,12 @@ watch(() => currentUser.value.role, async () => {
           <span class="nav-icon">{{n.icon}}</span><span class="nav-label">{{n.label}}</span><span class="nav-arrow">‹</span>
         </NuxtLink>
       </nav>
+      <div class="sidebar-tools">
+        <button class="theme-toggle" type="button" :aria-label="theme==='light'?'تفعيل الوضع الداكن':'تفعيل الوضع الفاتح'" @click="toggleTheme">
+          <span class="theme-toggle-icon">{{ theme==='light' ? '◐' : '☀' }}</span>
+          <span><b>{{ theme==='light' ? 'الوضع الداكن' : 'الوضع الفاتح' }}</b><small>تغيير مظهر النظام</small></span>
+        </button>
+      </div>
       <div class="userbox userbox-v2">
         <div class="user-meta"><div class="user-avatar">{{currentUser.name?.slice(0,1) || 'م'}}</div><div><b>{{currentUser.name}}</b><small>{{ roleLabels[currentUser.role] }}</small></div></div>
         <label>تبديل المستخدم — تجريبي</label>
@@ -49,7 +69,10 @@ watch(() => currentUser.value.role, async () => {
       </div>
     </aside>
     <section class="workspace">
-      <header class="mobile-brandbar"><div class="brand-mark">ط</div><div><b>طريبيل</b><small>{{ roleLabels[currentUser.role] }}</small></div></header>
+      <header class="mobile-brandbar">
+        <div class="mobile-brand-identity"><div class="brand-mark">ط</div><div><b>طريبيل</b><small>{{ roleLabels[currentUser.role] }}</small></div></div>
+        <button class="mobile-theme-toggle" type="button" @click="toggleTheme">{{ theme==='light' ? '◐' : '☀' }}</button>
+      </header>
       <main class="main"><div class="content-wrap"><slot /></div></main>
     </section>
   </div>
