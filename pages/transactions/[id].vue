@@ -35,7 +35,7 @@ async function rebuildMerged(openAfter=true){
     const pdf=await mergeToPdf(ids);const id=`merged_${tx.value.id}`;await saveFile(id,pdf)
     tx.value.attachments=tx.value.attachments.filter(a=>a.category!=='merged')
     tx.value.attachments.push({id,name:`${tx.value.serial}-ملف-المعاملة-الموحد.pdf`,mime:'application/pdf',size:pdf.size,category:'merged',stageKey:'archive',createdAt:new Date().toISOString(),uploadedBy:currentUser.value.name})
-    persist();notify('تم تجميع كل أوراق المعاملة في PDF واحد');if(openAfter)await openFile(id)
+    persist(tx.value);notify('تم تجميع كل أوراق المعاملة في PDF واحد');if(openAfter)await openFile(id)
   }finally{merging.value=false}
 }
 async function openMerged(){if(mergedFile.value)await openFile(mergedFile.value.id);else await rebuildMerged(true)}

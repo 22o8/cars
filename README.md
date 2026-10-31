@@ -30,3 +30,6 @@ Verified live login and verified procedure creation result.
 
 ## v13.4 Native Login First
 Login screen fallback now detects the live small ASYCUDA login window and fills/submits credentials even when Java Access Bridge does not expose LOGIN roles correctly.
+
+## Cloud sync update
+Companies, transactions, stages, finance data and scanner files now use the configured Upstash Redis as a shared source across devices. Local browser storage is retained only as an offline/cache fallback. See `CLOUD-SYNC-AR.md`.

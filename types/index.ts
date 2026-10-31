@@ -1,7 +1,7 @@
 export type StageStatus = 'pending' | 'active' | 'done' | 'blocked'
 export type Role = 'admin' | 'unified' | 'asycuda' | 'inspection' | 'customs' | 'checks' | 'audit' | 'cashier' | 'completion' | 'computer' | 'transport' | 'archive' | 'delivery' | 'viewer'
 
-export interface Company { id: string; name: string; code: string; notes?: string }
+export interface Company { id: string; name: string; code: string; notes?: string; updatedAt?: string }
 export interface User { id: string; name: string; role: Role; active: boolean }
 export interface Attachment {
   id: string

@@ -48,7 +48,7 @@ async function buildMerged(tx:Transaction){
   await saveFile(id,pdf)
   tx.attachments=tx.attachments.filter(a=>a.category!=='merged')
   tx.attachments.push({id,name:`${tx.serial}-ملف-المعاملة-الموحد.pdf`,mime:'application/pdf',size:pdf.size,category:'merged',stageKey:'archive',createdAt:new Date().toISOString(),uploadedBy:currentUser.value.name})
-  persist()
+  persist(tx)
   return id
 }
 async function archiveNow(tx:Transaction){
