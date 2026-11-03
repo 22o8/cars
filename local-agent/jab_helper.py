@@ -5,10 +5,13 @@ import contextlib
 import json
 import os
 import struct
+import time
+from urllib.parse import urlparse
 import sys
 from pathlib import Path
-from navigation import NavigationError, detect_state, subtree, visible
+from navigation import NavigationError, detect_state, subtree, visible, norm
 from intelligent_planner import IntelligentPlanner
+from unified_form import form_values, company_editor, unified_candidates, choose_unified_frame
 def find_bridge_dll() -> str:
     candidates = []
     jab_home = os.environ.get('JAB_HOME', '').strip()
@@ -31,7 +34,23 @@ class Session:
             raise RuntimeError('JAB helper requires Python 32-bit')
         self.drivers, self.elements = {}, {}
         self.owned = set()
+        self.bound_frame = None
+        self.completion_receipt = None
+        self.page_open_pending_until = 0.0
         self.planner = IntelligentPlanner(Path(__file__).resolve().parent)
+
+    def unified_frame(self, snapshot):
+        nodes=snapshot['nodes']
+        if self.bound_frame is not None:
+            matches=[n for n in unified_candidates(nodes) if self.elements[n['id']].vmid==self.bound_frame.vmid and self.bound_frame._is_same_object(self.bound_frame.accessible_context,self.elements[n['id']].accessible_context)]
+            if len(matches)!=1:
+                raise NavigationError('bound_form_changed','The original company form disappeared or changed; creation stopped')
+            return matches[0]
+        frame=choose_unified_frame(nodes)
+        self.bound_frame=self.elements[frame['id']]
+        # Keep this Java object reference alive across snapshots; indices are not identities.
+        self.owned.discard(frame['id'])
+        return frame
 
     def release_elements(self):
         for key in self.owned:
@@ -95,25 +114,20 @@ class Session:
             key = str(len(nodes))
             self.elements[key] = el
             if owned: self.owned.add(key)
-            role = el.role_en_us
-            try:
-                bounds = dict(el.bounds or {})
-            except Exception:
-                bounds = {}
-            try:
-                index_in_parent = int(el.index_in_parent)
-            except Exception:
-                index_in_parent = -1
-            try:
-                description = str(el.description or '')
-            except Exception:
-                description = ''
+            info = el._get_accessible_context_info()
+            role = info.role_en_US
+            states = str(info.states_en_US).split(',')
+            bounds = {'x':int(info.x),'y':int(info.y),'width':int(info.width),'height':int(info.height)}
+            sensitive = role in ('text','editable text','password text','password')
             nodes.append({'id': key, 'parent': parent, 'role': role,
-                          'name': '' if role in ('text', 'password text') else el.name,
-                          'description': '' if role in ('text', 'password text') else description,
-                          'states': list(el.states_en_us), 'action': bool(el.accessible_action),
-                          'index_in_parent': index_in_parent, 'bounds': bounds, 'windowHwnd': int(window_hwnd), 'windowMain': bool(window_main), 'windowTitle': str(window_title or '')})
-            for child in el.get_children(): visit(child, key, depth + 1, window_hwnd, window_main, window_title)
+                          'name': '' if sensitive else str(info.name),
+                          'description': '' if sensitive else str(info.description),
+                          'states': states, 'action': bool(info.accessibleAction),
+                          'index_in_parent': int(info.indexInParent), 'bounds': bounds,
+                          'windowHwnd': int(window_hwnd), 'windowMain': bool(window_main), 'windowTitle': str(window_title or '')})
+            # Hidden subtrees contain hundreds of inactive menus, not live controls.
+            if depth == 0 or 'showing' in states:
+                for child in el.get_children(): visit(child, key, depth + 1, window_hwnd, window_main, window_title)
         java_windows = []
         for h in handles:
             if h not in self.drivers: self.drivers[h] = JABDriver(hwnd=h, bridge_dll=DLL, timeout=8)
@@ -132,11 +146,73 @@ class Session:
             visit(self.drivers[h].root_element, None, 0, h, h == hwnd, win32gui.GetWindowText(h), owned=False)
         return {'nodes': nodes, 'truncated': truncated, 'javaWindows': java_windows, 'mainHwnd': int(hwnd), 'pid': int(pid)}
 
+    def security_warning(self, hwnd):
+        import win32gui
+        from pyjab.jabdriver import JABDriver
+        if not win32gui.IsWindow(hwnd) or win32gui.GetWindowText(hwnd) != 'Security Warning':
+            raise NavigationError('security_window_changed', 'The warning window changed')
+        driver = JABDriver(hwnd=hwnd, bridge_dll=DLL, timeout=8)
+        owned=[]
+        def tree(el):
+            result=[el]
+            for child in el.get_children():
+                owned.append(child)
+                result.extend(tree(child))
+            return result
+        try:
+            elements=tree(driver.root_element)
+            labels=[str(el.name or '').strip() for el in elements if el.role_en_us=='label']
+            origins=[urlparse(text) for text in labels if text.startswith('https://')]
+            if not any(u.scheme=='https' and u.hostname=='asy.mof.gov.iq' and u.port in (None,443) and not u.username for u in origins):
+                raise NavigationError('security_origin_unverified', 'Warning does not show the official HTTPS origin')
+            boxes=[e for e in elements if e.role_en_us=='check box' and str(e.name or '').rstrip('.')=='I accept the risk and want to run this application']
+            runs=[e for e in elements if e.role_en_us=='push button' and e.name=='Run']
+            if len(boxes)!=1 or len(runs)!=1:
+                raise NavigationError('security_controls_ambiguous', 'Warning controls are not unique')
+            if 'checked' not in boxes[0].states_en_us:
+                boxes[0].click(simulate=False)
+            driver._pump_messages()
+            fresh=tree(driver.root_element)
+            checked=[e for e in fresh if e.role_en_us=='check box' and str(e.name or '').startswith('I accept the risk') and 'checked' in e.states_en_us]
+            run=[e for e in fresh if e.role_en_us=='push button' and e.name=='Run' and 'enabled' in e.states_en_us]
+            if len(checked)!=1 or len(run)!=1:
+                raise NavigationError('security_acceptance_unverified','Checkbox did not become checked or Run did not enable')
+            run[0].click(simulate=False)
+            deadline=time.monotonic()+20
+            while win32gui.IsWindow(hwnd) and win32gui.IsWindowVisible(hwnd) and time.monotonic()<deadline:
+                driver._pump_messages(); time.sleep(.1)
+            if win32gui.IsWindow(hwnd) and win32gui.IsWindowVisible(hwnd):
+                raise NavigationError('security_warning_still_open','Run was clicked but warning remains open')
+            return {'operation':'security_accepted','originVerified':True,'checkboxChecked':True,'runClicked':True,'windowClosed':True}
+        finally:
+            for el in owned:
+                try: el.release_jabelement()
+                except Exception: pass
+            driver.detach()
+
     def request(self, request):
+        if request['command']=='reset_procedure_binding':
+            if self.bound_frame is not None:
+                self.bound_frame.release_jabelement()
+                self.bound_frame=None
+            return {'operation':'procedure_binding_reset'}
+        if request['command']=='accept_security_warning':
+            return self.security_warning(int(request['hwnd']))
         snapshot = self.snapshot()
         state_info = detect_state(snapshot)
         if request['command'] == 'snapshot':
             return {'snapshot': snapshot, **state_info}
+        if request['command'] == 'reveal_unified_page':
+            if state_info.get('state') != 'UNIFIED_PROCEDURE_OFFSCREEN':
+                raise NavigationError('navigation_changed','Expected an offscreen unified procedure frame')
+            nodes=snapshot['nodes']
+            desktop=next(n for n in nodes if n['role']=='desktop pane')
+            viewport=next(n for n in nodes if n['id']==desktop['parent'])
+            bars=[n for n in nodes if n['role']=='scroll bar' and 'horizontal' in n['states'] and n['parent']==viewport['parent']]
+            if len(bars)!=1: raise NavigationError('scrollbar_ambiguous','Cannot locate the application desktop scrollbar')
+            self.elements[bars[0]['id']].scroll(to_bottom=False,hold=1)
+            return {'operation':'unified_page_revealed'}
+
         if request['command'] == 'set_company_code':
             if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
                 raise NavigationError('unified_screen_not_ready', 'شاشة رقم الإجراء الموحد ليست جاهزة لإدخال رمز الشركة')
@@ -144,33 +220,99 @@ class Session:
             if not code or len(code) > 20:
                 raise NavigationError('invalid_company_code', 'رمز الشركة غير صالح')
             nodes = snapshot['nodes']
-            frame_id = state_info.get('frame')
-            frame = next((n for n in nodes if n.get('id') == str(frame_id)), None)
+            frame = self.unified_frame(snapshot)
             scope = subtree(nodes, frame) if frame else nodes
-            labels = [n for n in scope if n.get('role') == 'label' and norm(n.get('name','')) in {norm('رمز الشركة'), norm('Company code')}]
-            fields = [n for n in scope if n.get('role') in ('text','editable text','combo box') and visible(n) and 'enabled' in n.get('states', []) and ('editable' in n.get('states', []) or n.get('role')=='combo box')]
-            if not labels or not fields:
-                raise NavigationError('company_field_not_found', 'تعذر تحديد خانة رمز الشركة داخل شاشة الإجراء الموحد')
-            def center(n):
-                b=n.get('bounds') or {}; return (int(b.get('x',0))+int(b.get('width',0))//2, int(b.get('y',0))+int(b.get('height',0))//2)
-            lx,ly=center(labels[0])
-            ranked=sorted(fields, key=lambda n: (abs(center(n)[1]-ly)*4 + abs(center(n)[0]-lx)))
-            target=ranked[0]
-            filled=False
-            if target.get('role') != 'combo box':
+            import win32gui, win32process
+            from pyjab.common.win32utils import Win32Utils
+            hwnd = int(frame.get('windowHwnd') or 0)
+            if win32process.GetWindowThreadProcessId(hwnd)[1] != snapshot['pid']:
+                raise NavigationError('window_changed','Company window identity changed')
+            if win32gui.GetForegroundWindow()!=hwnd:
+                import win32api
+                foreground=win32gui.GetForegroundWindow()
+                foreground_thread=win32process.GetWindowThreadProcessId(foreground)[0] if foreground else 0
+                current_thread=win32api.GetCurrentThreadId()
+                attached=False
                 try:
-                    self.elements[target['id']].send_text(code, wait_for_text_update=False)
-                    filled=True
+                    if foreground_thread and foreground_thread!=current_thread:
+                        win32process.AttachThreadInput(current_thread,foreground_thread,True)
+                        attached=True
+                    if win32gui.IsIconic(hwnd): win32gui.ShowWindow(hwnd,9)
+                    win32gui.SetForegroundWindow(hwnd)
                 except Exception:
-                    filled=False
-            return {'operation':'company_code_filled','target':target['id'],'bounds':target.get('bounds') or {},'companyCode':code,'filledByJab':filled,'role':target.get('role','')}
+                    pass
+                finally:
+                    if attached: win32process.AttachThreadInput(current_thread,foreground_thread,False)
+            if win32gui.GetForegroundWindow()!=hwnd:
+                raise NavigationError('focus_failed','Company window is not foreground')
+            for attempt in range(16):
+                try:
+                    target = company_editor(scope)
+                    break
+                except NavigationError:
+                    focused = [n for n in scope if 'focused' in n.get('states',[]) and n.get('role') in ('text','editable text','combo box')]
+                    if not focused:
+                        raise NavigationError('company_field_not_found','No focused editor inside the verified form; focus company code first')
+                    Win32Utils().send_keys('shift+tab')
+                    time.sleep(.08)
+                    snapshot = self.snapshot()
+                    info = detect_state(snapshot)
+                    if info.get('state')!='UNIFIED_PROCEDURE_OPEN':
+                        raise NavigationError('navigation_changed','Form changed during editor discovery')
+                    frame=self.unified_frame(snapshot)
+                    scope=subtree(snapshot['nodes'],frame)
+            else:
+                raise NavigationError('company_field_not_found','No company-code editor in the form tab order')
+            element=self.elements[target['id']]
+            element.send_text(code, wait_for_text_update=False)
+            element._request_focus()
+            deadline=time.monotonic()+2
+            while time.monotonic()<deadline:
+                self.drivers[hwnd]._pump_messages()
+                if 'focused' in element.states_en_us: break
+                time.sleep(.05)
+            if str(element.text or '').strip()!=code:
+                raise NavigationError('company_input_unverified','Company code text did not match; Enter was not sent')
+            # Commit exactly once, after read-back. Never retype an already verified code.
+            if win32gui.GetForegroundWindow()!=hwnd or 'focused' not in element.states_en_us:
+                raise NavigationError('focus_failed','Company Enter blocked: foreground=' + str(win32gui.GetForegroundWindow()==hwnd) + ', editorFocused=' + str('focused' in element.states_en_us))
+            Win32Utils().send_keys('enter')
+            return {'operation':'company_code_filled','target':target['id'],'bounds':target.get('bounds') or {},'companyCode':code,'filledByJab':True,'enterSent':True,'role':target.get('role','')}
+
+        if request['command'] == 'read_company_data':
+            if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
+                raise NavigationError('company_validation_interrupted', 'Company validation opened another page or dialog; review is required')
+            nodes = snapshot['nodes']
+            frame = self.unified_frame(snapshot)
+            scope = subtree(nodes, frame) if frame else []
+            def read_named(names):
+                labels = [n for n in scope if n.get('role') == 'label' and norm(n.get('name','')) in {norm(v) for v in names}]
+                if len(labels) != 1:
+                    return ''
+                lb = labels[0].get('bounds') or {}
+                candidates = []
+                for n in scope:
+                    if n.get('role') not in ('text', 'editable text') or not visible(n): continue
+                    b = n.get('bounds') or {}
+                    if abs((b.get('y',0)+b.get('height',0)/2)-(lb.get('y',0)+lb.get('height',0)/2)) > max(12,lb.get('height',0)): continue
+                    candidates.append(n)
+                if len(candidates) != 1: return ''
+                try: return str(self.elements[candidates[0]['id']].text or '').strip()
+                except Exception: return ''
+            values = form_values(frame.get('description','')) if frame else {}
+            code = values.get('companyCode') or read_named(('رمز الشركة', 'Company code'))
+            name = values.get('companyName') or read_named(('اسم الشركة', 'Company name'))
+            expected = request.get('expected_name') or ''
+            verified = code == request.get('company_code') and bool(name) and (not expected or norm(name) == norm(expected))
+            return {'verified': bool(verified), 'companyNamePresent': bool(name), 'companyName': name, 'companyCode': code}
 
         if request['command'] == 'read_unified_result':
-            if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
-                raise NavigationError('unified_screen_not_ready', 'شاشة رقم الإجراء الموحد ليست جاهزة لقراءة النتيجة')
-            nodes=snapshot['nodes']; frame_id=state_info.get('frame')
-            frame=next((n for n in nodes if n.get('id') == str(frame_id)), None)
-            scope=subtree(nodes, frame) if frame else nodes
+            nodes=snapshot['nodes']
+            frame=self.unified_frame(snapshot)
+            scope=subtree(nodes,frame)
+            values = form_values(frame.get('description','')) if frame else {}
+            if frame and 'تسجيل. رقم:' in frame.get('description',''):
+                return {'operation':'result_read','procedureNo':values.get('procedureNo',''),'source':'registration_metadata'}
             labels=[n for n in scope if n.get('role')=='label' and norm('رقم الإجراء الموحد') in norm(n.get('name',''))]
             fields=[n for n in scope if n.get('role') in ('text','editable text') and visible(n) and 'enabled' in n.get('states',[])]
             if not labels or not fields:
@@ -179,15 +321,15 @@ class Session:
                 b=n.get('bounds') or {}; return (int(b.get('x',0))+int(b.get('width',0))//2,int(b.get('y',0))+int(b.get('height',0))//2)
             lx,ly=center(labels[0])
             ranked=sorted(fields,key=lambda n:(abs(center(n)[1]-ly)*5+abs(center(n)[0]-lx)))
-            target=ranked[0]
+            aligned=[n for n in ranked if abs(center(n)[1]-ly) <= max(12,(labels[0].get('bounds') or {}).get('height',0))]
+            if len(aligned)!=1: raise NavigationError('result_field_not_found','Result field is ambiguous')
+            target=aligned[0]
             el=self.elements.get(target['id'])
             raw=''
             if el is not None:
-                try: raw=str(el.name or '')
+                try: raw=str(el.text or '')
                 except Exception: raw=''
-                if not raw:
-                    try: raw=str(el.description or '')
-                    except Exception: raw=''
+
             digits=''.join(ch for ch in raw if ch.isdigit())
             # A company code can also be numeric, so only accept a value close to
             # the actual unified-number label and not identical to the company code
@@ -198,8 +340,13 @@ class Session:
             if state_info.get('state') != 'UNIFIED_PROCEDURE_OPEN':
                 raise NavigationError('unified_screen_not_ready', 'شاشة رقم الإجراء الموحد ليست جاهزة للتنفيذ')
             nodes=snapshot['nodes']; frame_id=state_info.get('frame')
-            frame=next((n for n in nodes if n.get('id') == str(frame_id)), None)
+            frame=self.unified_frame(snapshot)
             scope=subtree(nodes, frame) if frame else nodes
+            # Observed Iraqi client: eye = document check, checkmark = validate/create.
+            checks = [n for n in scope if n.get('role')=='push button' and visible(n) and 'enabled' in n.get('states',[]) and norm(n.get('description',''))==norm('التحقق') and n.get('action')]
+            if len(checks)==1:
+                self.elements[checks[0]['id']].click(simulate=False)
+                return {'operation':'procedure_submitted','method':'exact_validation_tooltip'}
             # Prefer a semantically named validation/create button if this build exposes one.
             semantic=[]
             good_terms=tuple(norm(x) for x in ('تحقق','تأكيد','انشاء','إنشاء','تنفيذ','Validate','Verify','Create','Execute','OK'))
@@ -211,45 +358,41 @@ class Session:
             if len(semantic)==1:
                 self.elements[semantic[0]['id']].click(simulate=False)
                 return {'operation':'procedure_submitted','method':'semantic_button'}
-            # Iraqi ASYCUDA commonly exposes the toolbar icons without names. On the
-            # Unified Procedure internal frame the blue check is the second icon from
-            # the right in the compact top toolbar. Require a tight horizontal icon
-            # row before applying this structural rule.
-            fb=(frame or {}).get('bounds') or {}
-            fy=int(fb.get('y',0)); fh=max(1,int(fb.get('height',0))); fx=int(fb.get('x',0)); fw=max(1,int(fb.get('width',0)))
-            icons=[]
-            for n in scope:
-                if n.get('role')!='push button' or not visible(n) or 'enabled' not in n.get('states',[]) or not n.get('action'): continue
-                b=n.get('bounds') or {}; x=int(b.get('x',0)); y=int(b.get('y',0)); w=int(b.get('width',0)); h=int(b.get('height',0))
-                if 8 <= w <= 70 and 8 <= h <= 70 and fy <= y <= fy + max(90, int(fh*.18)):
-                    icons.append(n)
-            icons=sorted(icons,key=lambda n:int((n.get('bounds') or {}).get('x',0)))
-            if 3 <= len(icons) <= 8:
-                candidate=icons[-2]
-                self.elements[candidate['id']].click(simulate=False)
-                return {'operation':'procedure_submitted','method':'structural_second_from_right','target':candidate['id'],'bounds':candidate.get('bounds') or {}}
-            raise NavigationError('submit_button_not_found', f'تعذر تحديد زر تنفيذ الإجراء الموحد بأمان (toolbarButtons={len(icons)})')
+            raise NavigationError('submit_button_not_found', 'Create button lacks a unique semantic identity; capture/review required')
 
-        if request['command'] == 'affirm_current_popup':
+        if request['command'] in ('affirm_current_popup','read_completion_result'):
             nodes=snapshot['nodes']
-            popup_nodes=[n for n in nodes if visible(n) and (n.get('role') in ('alert','dialog','option pane') or 'modal' in n.get('states',[]))]
-            scope=nodes
-            if popup_nodes:
-                scope=subtree(nodes,popup_nodes[0])
-            buttons=[n for n in scope if n.get('role')=='push button' and visible(n) and 'enabled' in n.get('states',[]) and n.get('action')]
-            # Completion dialogs in this Iraqi build show X on the left and the
-            # affirmative check on the right. Use only after an explicit user
-            # confirmation from the web UI and only when exactly two aligned buttons exist.
-            if len(buttons)!=2:
-                raise NavigationError('final_confirmation_ambiguous', f'تعذر تحديد زر التأكيد النهائي بأمان (buttons={len(buttons)})')
-            def box(n):
-                b=n.get('bounds') or {}; return (int(b.get('x',0)),int(b.get('y',0)),int(b.get('width',0)),int(b.get('height',0)))
-            buttons=sorted(buttons,key=lambda n:box(n)[0])
-            l,r=buttons[0],buttons[1]; lx,ly,lw,lh=box(l); rx,ry,rw,rh=box(r)
-            if abs(ly-ry)>max(12,max(lh,rh)//2):
-                raise NavigationError('final_confirmation_ambiguous','تغير ترتيب أزرار نافذة التأكيد النهائي')
-            self.elements[r['id']].click(simulate=False)
-            return {'operation':'final_confirmation_clicked','target':r['id'],'bounds':r.get('bounds') or {}}
+            expected_no=str(request.get('procedure_no') or '')
+            frames=[n for n in unified_candidates(nodes) if form_values(n.get('description','')).get('procedureNo')==expected_no]
+            values=form_values(frames[0].get('description','')) if len(frames)==1 else {}
+            target=request.get('target') or {}
+            popups=[n for n in nodes if visible(n) and n.get('role')=='dialog' and norm(n.get('name',''))==norm('انجاز المعاملة')]
+            if request['command']=='read_completion_result':
+                import win32gui
+                from unified_form import verify_completion_receipt
+                hwnd=int(target.get('windowHwnd') or 0)
+                closed=bool(hwnd) and (not win32gui.IsWindow(hwnd) or not win32gui.IsWindowVisible(hwnd))
+                # Iraqi ASYCUDA closes the completed internal frame when Yes is clicked.
+                # Verify the recorded success+number from BEFORE that click, not an unrelated blank form.
+                return {'verified':verify_completion_receipt(self.completion_receipt,expected_no,hwnd,snapshot['pid'],closed,any(visible(n) and n.get('role') in ('dialog','alert','option pane') for n in nodes))}
+            if not expected_no or values.get('procedureNo')!=expected_no:
+                raise NavigationError('completion_identity_changed','The registered procedure does not match the approved number')
+            if len(popups)!=1 or int(popups[0].get('windowHwnd') or 0)!=int(target.get('windowHwnd') or 0):
+                raise NavigationError('final_confirmation_ambiguous','Completion dialog differs from the approved screenshot')
+            scope=subtree(nodes,popups[0])
+            texts=[]
+            for n in scope:
+                if n.get('role')=='text':
+                    try: texts.append(str(self.elements[n['id']].text or ''))
+                    except Exception: pass
+            success=norm(' '.join(texts))
+            if 'is done' not in success and 'تم' not in success:
+                raise NavigationError('completion_success_missing','Completion dialog does not report success')
+            buttons=[n for n in scope if n.get('role')=='push button' and visible(n) and 'enabled' in n.get('states',[]) and norm(n.get('description',''))==norm('نعم') and n.get('action')]
+            if len(buttons)!=1: raise NavigationError('final_confirmation_ambiguous','Expected one Yes checkmark in completion dialog')
+            self.elements[buttons[0]['id']].click(simulate=False)
+            self.completion_receipt={'procedureNo':expected_no,'hwnd':int(target['windowHwnd']),'pid':snapshot['pid'],'serverSuccess':True,'confirmationClicked':True}
+            return {'operation':'final_confirmation_clicked','receipt':self.completion_receipt}
 
         if request['command'] == 'submit_login':
             # This ASYCUDA Java 8 build exposes the login/cancel controls as two
@@ -267,6 +410,10 @@ class Session:
                     scope = subtree(nodes, root)
             passwords = [n for n in scope if n.get('role') in ('password text', 'password') and visible(n) and 'enabled' in n.get('states', [])]
             users = [n for n in scope if n.get('role') in ('text', 'editable text') and visible(n) and 'enabled' in n.get('states', []) and 'editable' in n.get('states', [])]
+            semantic = [n for n in scope if n.get('role')=='push button' and visible(n) and 'enabled' in n.get('states',[]) and norm(n.get('description','')) in {norm('المرور'),norm('Login')}]
+            if len(passwords)==1 and len(users)==1 and len(semantic)==1:
+                self.elements[semantic[0]['id']].click(simulate=False)
+                return {'operation':'login_submitted','method':'verified_login_tooltip'}
             buttons = [n for n in scope if n.get('role') == 'push button' and visible(n) and 'enabled' in n.get('states', []) and n.get('action') and not str(n.get('name','')).strip()]
             if len(passwords) != 1 or len(users) != 1 or len(buttons) != 2:
                 raise NavigationError('login_submit_ambiguous', f'تعذر تحديد زر الدخول بأمان (username={len(users)}, password={len(passwords)}, buttons={len(buttons)})')
@@ -288,12 +435,18 @@ class Session:
             return {'operation': 'login_submitted', 'method': 'jab_structural_button'}
         if request['command'] != 'step':
             raise NavigationError('invalid_command', 'Unsupported helper command')
+        if state_info.get('state')=='MAIN_SCREEN' and time.monotonic()<self.page_open_pending_until:
+            return {'state':'LOADING','operation':'wait'}
         action = self.planner.decide(snapshot)
         operation = action['operation']
         if operation in ('click', 'expand'):
             element = self.elements[action['target']]
             if operation == 'expand': element.expand(simulate=False)
-            else: element.click(simulate=False)
+            else:
+                element.click(simulate=False)
+                node=next(n for n in snapshot['nodes'] if n['id']==action['target'])
+                if norm(node.get('name',''))==norm('رقم الاجراء الموحد'):
+                    self.page_open_pending_until=time.monotonic()+8
         elif operation == 'login' and request.get('credentials'):
             # The Iraqi Java 8 login window exposes the username/password fields
             # through JAB, but the green checkmark login button is icon-only and
@@ -322,6 +475,12 @@ class Session:
             creds = request['credentials']
             self.elements[users[0]['id']].send_text(creds['username'], wait_for_text_update=False)
             self.elements[passwords[0]['id']].send_text(creds['password'], wait_for_text_update=False)
+            user_value = self.elements[users[0]['id']].text or ''
+            password_length = self.elements[passwords[0]['id']]._get_accessible_text_info().charCount
+            verified = user_value == creds['username'] and password_length == len(creds['password'])
+            if not verified:
+                raise NavigationError('login_fields_unverified','Java did not confirm the username and password length; login was not submitted')
+            action['fieldsVerified'] = True
             action['operation'] = 'login_filled'
             action['usernameBounds'] = dict(users[0].get('bounds') or {})
             action['passwordBounds'] = dict(passwords[0].get('bounds') or {})
@@ -331,6 +490,9 @@ class Session:
 
     def close(self):
         self.release_elements()
+        if self.bound_frame is not None:
+            self.bound_frame.release_jabelement()
+            self.bound_frame = None
         for driver in self.drivers.values(): driver.detach()
 
 def main():
@@ -345,8 +507,10 @@ def main():
                 response = {'ok': True, 'result': result}
             except NavigationError as exc:
                 response = {'ok': False, 'code': exc.code, 'message': str(exc)}
-            except Exception:
-                response = {'ok': False, 'code': 'jab_unavailable', 'message': 'تعذر قراءة واجهة ASYCUDA عبر Java Access Bridge'}
+            except Exception as exc:
+                import traceback
+                frame = traceback.extract_tb(exc.__traceback__)[-1]
+                response = {'ok': False, 'code': 'jab_unavailable', 'message': 'JAB ' + type(exc).__name__ + ' at ' + Path(frame.filename).name + ':' + str(frame.lineno)}
             wire.write(json.dumps(response, ensure_ascii=True) + '\n')
             wire.flush()
     finally: session.close()

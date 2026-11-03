@@ -1,3 +1,6 @@
+import type { FetchOptions } from 'ofetch'
+// Keep cloud queue inference bounded instead of expanding every Nitro route type.
+const syncFetch = $fetch as <T = unknown>(request: string, options?: FetchOptions<'json'>) => Promise<T>
 import type { Company, Transaction, Activity, StageStatus, StageEntry } from '~/types'
 import { makeStages, stageRoleMap } from '~/utils/stages'
 
@@ -106,7 +109,7 @@ export function useTransactions() {
     w.__tarabilCompanyWriteQueues ||= {}
     const payload = JSON.parse(JSON.stringify(company))
     const previous: Promise<any> = w.__tarabilCompanyWriteQueues[company.id] || Promise.resolve()
-    const task = previous.catch(()=>{}).then(() => cloudWrite(() => $fetch('/api/sync/company', { method:'POST', body:payload })))
+    const task = previous.catch(()=>{}).then(() => cloudWrite(() => syncFetch<{ ok: boolean; revision?: number }>('/api/sync/company', { method:'POST', body:payload })))
     w.__tarabilCompanyWriteQueues[company.id] = task
     await task
   }
@@ -117,7 +120,7 @@ export function useTransactions() {
     w.__tarabilTxWriteQueues ||= {}
     const payload = JSON.parse(JSON.stringify(tx))
     const previous: Promise<any> = w.__tarabilTxWriteQueues[tx.id] || Promise.resolve()
-    const task = previous.catch(()=>{}).then(() => cloudWrite(() => $fetch('/api/sync/transaction', { method:'POST', body:payload })))
+    const task = previous.catch(()=>{}).then(() => cloudWrite(() => syncFetch<{ ok: boolean; revision?: number }>('/api/sync/transaction', { method:'POST', body:payload })))
     w.__tarabilTxWriteQueues[tx.id] = task
     await task
   }
@@ -126,14 +129,14 @@ export function useTransactions() {
     if (!import.meta.client || writeCount.value > 0) return
     try {
       if (!force && cloudRevision.value >= 0) {
-        const rr:any = await $fetch('/api/sync/revision', { cache: 'no-store' as any })
+        const rr:any = await syncFetch('/api/sync/revision', { cache: 'no-store' as any })
         const revision = Number(rr?.revision || 0)
         if (revision === cloudRevision.value) {
           syncStatus.value = 'online'; lastSyncAt.value = now(); return
         }
       }
       syncStatus.value = 'syncing'
-      const data:any = await $fetch('/api/sync/state', { cache: 'no-store' as any })
+      const data:any = await syncFetch('/api/sync/state', { cache: 'no-store' as any })
       const remoteCompanies = Array.isArray(data?.companies) ? data.companies.map(normalizeCompany) : []
       const remoteTransactions = Array.isArray(data?.transactions) ? data.transactions.map(normalizeTransaction) : []
       companies.value = remoteCompanies.sort((a:Company,b:Company)=>a.name.localeCompare(b.name,'ar'))
@@ -152,7 +155,7 @@ export function useTransactions() {
     if (!import.meta.client) return
     try {
       syncStatus.value = 'syncing'
-      const data:any = await $fetch('/api/sync/bootstrap', { method: 'POST', body: { companies: companies.value, transactions: transactions.value } })
+      const data:any = await syncFetch('/api/sync/bootstrap', { method: 'POST', body: { companies: companies.value, transactions: transactions.value } })
       if (Array.isArray(data?.companies) && data.companies.length) companies.value = data.companies.map(normalizeCompany).sort((a:Company,b:Company)=>a.name.localeCompare(b.name,'ar'))
       if (Array.isArray(data?.transactions)) transactions.value = data.transactions.map(normalizeTransaction).sort((a:Transaction,b:Transaction)=>b.createdAt.localeCompare(a.createdAt))
       cloudRevision.value = Number(data?.revision || 0)
@@ -261,12 +264,12 @@ export function useTransactions() {
 
   function removeCompany(id: string) {
     companies.value = companies.value.filter(c => c.id !== id); saveLocal()
-    void cloudWrite(() => $fetch(`/api/sync/company/${encodeURIComponent(id)}`, { method: 'DELETE' }))
+    void cloudWrite(() => syncFetch(`/api/sync/company/${encodeURIComponent(id)}`, { method: 'DELETE' }))
   }
 
   function resetDemo() {
     transactions.value = []; saveLocal()
-    void cloudWrite(() => $fetch('/api/sync/transactions-reset', { method: 'POST' }))
+    void cloudWrite(() => syncFetch('/api/sync/transactions-reset', { method: 'POST' }))
   }
 
   loadLocal(); startCloudSync()

@@ -77,3 +77,9 @@ Old Oracle Java 8 can display `Location: https://asy.mof.gov.iq` visually while 
 
 ## v13 production flow
 Version `9.0.0-production-unified-flow` adds explicit production execution. Test mode remains non-destructive. Main-screen mouse fallback uses live Java Access Bridge bounds only; no stored desktop coordinates are required for normal navigation.
+
+
+## v13.6 Exact Login Guard
+- Detects the exact small ASYCUDA login window instead of the largest background frame.
+- Runs a continuous login guard independent of JAB/job navigation.
+- Keeps the continuous Security Warning guard unchanged.

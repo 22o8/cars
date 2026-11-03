@@ -9,6 +9,7 @@ from navigation import NavigationError
 class JABClient:
     def __init__(self, base):
         self.base, self.process = Path(base), None
+        self.lock = threading.RLock()
     def start(self):
         if self.process and self.process.poll() is None: return
         python = self.base / '.venv32' / 'Scripts' / 'python.exe'
@@ -23,6 +24,9 @@ class JABClient:
             responses.put(None)
         threading.Thread(target=read, daemon=True).start()
     def call(self, command, timeout=30, **kwargs):
+        with self.lock:
+            return self._call(command, timeout, **kwargs)
+    def _call(self, command, timeout=30, **kwargs):
         self.start()
         try:
             self.process.stdin.write(json.dumps({'command': command, **kwargs}) + '\n')

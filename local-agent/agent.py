@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+import hashlib
+import re
 import base64
 import io
 import os
@@ -28,10 +30,14 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.4.0-native-login-first'
+VERSION = '9.9.4-verified-completion'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
+UI_LOCK = threading.RLock()
+SECURITY_WARNING_LOCK = UI_LOCK
+LOGIN_GUARD_LOCK = UI_LOCK
+LOGIN_GUARD_LAST_ATTEMPT = 0.0
 
 # Windows consoles can use legacy encodings. Never let a status message crash a completed job.
 for stream in (sys.stdout, sys.stderr):
@@ -108,76 +114,84 @@ def find_asycuda_window():
 
 def focus_window(win):
     try:
-        if win.isMinimized:
+        if hasattr(win, 'isMinimized') and win.isMinimized:
             win.restore()
-        win.activate()
-        time.sleep(.25)
+        if hasattr(win, 'activate'):
+            win.activate()
+        elif hasattr(win, 'set_focus'):
+            win.set_focus()
+        time.sleep(.12)
     except Exception:
-        pass
+        try:
+            if hasattr(win, 'set_focus'):
+                win.set_focus()
+        except Exception:
+            pass
 
 
 def _native_login_window():
-    """Return the live ASYCUDA login window when it is visibly the small pre-main dialog.
+    """Return the exact visible small ASYCUDA login window.
 
-    Java Access Bridge does not expose the Iraqi Java 8 login controls consistently on
-    every launch.  The login window itself is still a real ASYCUDA top-level window,
-    so this detector uses the live window rectangle only; it never uses stored desktop
-    coordinates. Security Warning has a different title and is handled before this.
+    Java 8 can keep a large ASYCUDA main frame alive behind the small login
+    dialog. The previous detector called find_asycuda_window(), which chooses
+    the largest window and therefore missed LOGIN completely in that case.
     """
-    win = find_asycuda_window()
-    if not win:
-        return None
+    candidates = []
+    seen = set()
     try:
-        width = int(getattr(win, 'width', 0) or 0)
-        height = int(getattr(win, 'height', 0) or 0)
-        title = str(getattr(win, 'title', '') or '')
-        if 'asycudaworld production server' not in title.casefold():
-            return None
-        # Observed login dialog is ~377x274. Keep a deliberately broad range so
-        # DPI scaling works while excluding the normal maximized ASYCUDA desktop.
-        if 280 <= width <= 760 and 190 <= height <= 520:
-            return win
+        for title in gw.getAllTitles():
+            if not title or 'asycudaworld production server' not in str(title).casefold():
+                continue
+            for win in gw.getWindowsWithTitle(title):
+                try:
+                    width = int(getattr(win, 'width', 0) or 0)
+                    height = int(getattr(win, 'height', 0) or 0)
+                    left = int(getattr(win, 'left', 0) or 0)
+                    top = int(getattr(win, 'top', 0) or 0)
+                    key = ('gw', left, top, width, height, str(title))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    if 280 <= width <= 760 and 190 <= height <= 520:
+                        candidates.append((width * height, win))
+                except Exception:
+                    continue
     except Exception:
-        return None
-    return None
+        pass
 
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1]
 
 def _native_login_fill_and_submit(username: str, password: str) -> bool:
-    """Fill and submit the exact live ASYCUDA login dialog using window-relative points.
-
-    This is the first fallback when JAB misses LOGIN. Points are recomputed from the
-    current ASYCUDA login window on every attempt, so moving the window or changing
-    display resolution does not invalidate them.
-    """
+    """Native fallback uses identified UIA fields, never guessed login positions."""
     win = _native_login_window()
-    if not win or not username or not password:
+    if win is None or not username or not password:
         return False
+    hwnd = int(getattr(win, '_hWnd', 0) or getattr(win, 'handle', 0))
     try:
-        left = int(win.left); top = int(win.top)
-        width = max(1, int(win.width)); height = max(1, int(win.height))
-        focus_window(win)
-        # Username and password fields in the Iraqi Java 8 login dialog. Use the
-        # middle-right portion of each field to avoid labels/icons at the left edge.
-        user_pt = (left + int(width * .76), top + int(height * .29))
-        pass_pt = (left + int(width * .76), top + int(height * .405))
-        ok_pt = (left + int(width * .835), top + int(height * .735))
-
-        pyautogui.click(*user_pt)
-        pyautogui.hotkey('ctrl', 'a')
-        pyautogui.write(str(username), interval=.012)
-        pyautogui.click(*pass_pt)
-        pyautogui.hotkey('ctrl', 'a')
-        pyautogui.write(str(password), interval=.012)
-        # Enter is the preferred default action. If the dialog remains, activate
-        # the live green-check position within the same verified ASYCUDA window.
-        pyautogui.press('enter')
-        time.sleep(.7)
-        if _native_login_window() is not None:
-            pyautogui.click(*ok_pt)
-        log('Native ASYCUDA login fields filled and login action submitted.')
+        dialog = Desktop(backend='uia').window(handle=hwnd)
+        fields = dialog.descendants(control_type='Edit')
+        users = [f for f in fields if not bool(f.element_info.element.CurrentIsPassword)]
+        passwords = [f for f in fields if bool(f.element_info.element.CurrentIsPassword)]
+        if len(users)!=1 or len(passwords)!=1:
+            log('[LOGIN] native fields not uniquely identified; nothing typed')
+            return False
+        dialog.set_focus()
+        users[0].set_edit_text(username)
+        passwords[0].set_edit_text(password)
+        user_ok = str(users[0].get_value()) == username
+        # Never submit merely because a keyboard or set-value call succeeded.
+        password_ok = len(str(passwords[0].get_value())) == len(password)
+        if not user_ok or not password_ok:
+            log('[LOGIN] native field verification unavailable; login not submitted')
+            return False
+        passwords[0].set_focus()
+        send_keys('{ENTER}')
+        log('[LOGIN] native fields verified; login submitted')
         return True
-    except Exception as exc:
-        log('Native login fallback failed: ' + type(exc).__name__ + ': ' + str(exc))
+    except Exception:
+        log('[LOGIN] native field access unavailable; login not submitted')
         return False
 
 
@@ -185,7 +199,7 @@ def _wait_native_login_exit(timeout: float = 18.0) -> bool:
     deadline = time.monotonic() + max(1.0, float(timeout))
     while time.monotonic() < deadline:
         check_cancelled()
-        if _security_dialog():
+        if _security_dialog()[0] is not None:
             return False
         if _native_login_window() is None:
             return True
@@ -216,28 +230,14 @@ def _asycuda_top_windows():
     window while Java Access Bridge continues to report the main frame.  This is
     the exact case that previously left jobs spinning forever.
     """
-    found = []
-    seen = set()
-    for backend in ('win32', 'uia'):
-        try:
-            for win in Desktop(backend=backend).windows(visible_only=True):
-                try:
-                    title = (win.window_text() or '').strip()
-                except Exception:
-                    title = ''
-                if 'asycudaworld production server' not in title.casefold():
-                    continue
-                try:
-                    hwnd = int(win.handle)
-                except Exception:
-                    hwnd = 0
-                key = hwnd or (backend, title, _wrapper_rect(win))
-                if key in seen:
-                    continue
-                seen.add(key)
-                found.append({'wrapper': win, 'backend': backend, 'hwnd': hwnd, 'title': title, 'rect': _wrapper_rect(win)})
-        except Exception:
-            continue
+    import win32gui
+    found=[]
+    def visit(hwnd, _):
+        title=win32gui.GetWindowText(hwnd)
+        if win32gui.IsWindowVisible(hwnd) and title.startswith('ASYCUDAWorld production server'):
+            wrapper=Desktop(backend='win32').window(handle=hwnd).wrapper_object()
+            found.append({'wrapper':wrapper,'backend':'win32','hwnd':hwnd,'title':title,'rect':win32gui.GetWindowRect(hwnd)})
+    win32gui.EnumWindows(visit,None)
     return found
 
 
@@ -385,12 +385,14 @@ def _security_dialog():
     Prefer UIA, but keep a Win32 fallback because old Java 8 dialogs expose
     controls differently across Windows builds.
     """
-    for backend in ('uia', 'win32'):
+    import win32gui
+    handles=[]
+    win32gui.EnumWindows(lambda h, _: handles.append(h) if win32gui.IsWindowVisible(h) and win32gui.GetWindowText(h)=='Security Warning' else None, None)
+    if not handles:
+        return None, None
+    for backend in ('uia','win32'):
         try:
-            desktop = Desktop(backend=backend)
-            wins = desktop.windows(title_re=r'.*Security Warning.*', visible_only=True)
-            if wins:
-                return wins[0], backend
+            return Desktop(backend=backend).window(handle=handles[0]).wrapper_object(), backend
         except Exception:
             continue
     return None, None
@@ -425,7 +427,7 @@ def _is_trusted_asycuda_security_warning(dlg, trusted_launch: bool = False) -> b
     """
     text = ' '.join(_safe_window_texts(dlg)).casefold()
     prompt_ok = ('do you want to run this application' in text) or trusted_launch
-    host_ok = ('asy.mof.gov.iq' in text or 'https://asy.mof.gov.iq' in text) or trusted_launch
+    host_ok = bool(re.search(r'https://asy\.mof\.gov\.iq(?=[/\s\"<>]|$)', text))
     title_ok = 'security warning' in text
     try:
         title_ok = title_ok or 'security warning' in (dlg.window_text() or '').casefold()
@@ -617,6 +619,13 @@ def _click_security_warning_if_present(timeout=40, trusted_launch: bool = False)
         dlg, backend = _security_dialog()
         if dlg:
             if not _is_trusted_asycuda_security_warning(dlg, trusted_launch=trusted_launch):
+                log('[SECURITY] warning detected; reading Java controls')
+                accepted = HELPER.call('accept_security_warning', hwnd=int(dlg.handle))
+                if accepted.get('windowClosed'):
+                    log('[SECURITY] official JNLP verified')
+                    log('[SECURITY] checkbox enabled')
+                    log('[SECURITY] Run clicked; warning closed')
+                    return True
                 raise NavigationError(
                     'manual_intervention_required',
                     'Java Security Warning appeared, but neither its UI text nor the verified JNLP launch context proved it belongs to asy.mof.gov.iq.'
@@ -797,6 +806,8 @@ def _norm_target_text(value):
 def _target_matches(expected: dict, actual: dict):
     if not expected or not actual:
         return False
+    if any(expected.get(k) and not actual.get(k) for k in ('kind','windowHwnd','name','bounds')):
+        return False
     ek, ak = str(expected.get('kind') or ''), str(actual.get('kind') or '')
     if ek and ak and ek != ak:
         return False
@@ -903,17 +914,10 @@ def take_review_screenshot(label: str, metadata: dict | None = None):
     win = find_asycuda_window()
     if not win or win.isMinimized:
         raise NavigationError('screenshot_failed', 'تعذر التقاط نافذة الأسيكودا')
-    left, top = int(win.left), int(win.top)
-    right, bottom = left + int(win.width), top + int(win.height)
-    tr = _target_rect(metadata)
-    if tr:
-        tl, tt, tright, tbottom = tr
-        left, top = min(left, tl), min(top, tt)
-        right, bottom = max(right, tright), max(bottom, tbottom)
-    pad = 8
-    left, top = max(0, left-pad), max(0, top-pad)
-    width, height = max(1, right-left+pad), max(1, bottom-top+pad)
-    img = pyautogui.screenshot(region=(left, top, width, height))
+    from window_capture import capture_hwnd
+    target = (metadata or {}).get('target') or {}
+    hwnd = int(target.get('windowHwnd') or (metadata or {}).get('hwnd') or win._hWnd)
+    img = capture_hwnd(hwnd)
     safe = ''.join(c for c in str(label) if c.isascii() and (c.isalnum() or c in '-_')) or 'review'
     filename = f'{safe}_{time.strftime("%Y-%m-%d_%H-%M-%S")}_{time.time_ns() % 1000000:06d}.png'
     path = SCREENSHOTS / filename
@@ -931,7 +935,9 @@ def _encode_review_screenshot(path: Path):
 
 def _send_review(job_id: str, state: str, metadata: dict | None = None):
     title, message = _review_copy(state)
-    path = take_review_screenshot('review-' + state.lower(), metadata)
+    if state == 'PROCEDURE_CREATED_WAITING_COMPLETION' and (metadata or {}).get('procedureNo'):
+        message = 'رقم الإجراء الموحد: ' + str(metadata['procedureNo']) + '\n' + message
+    path = take_screenshot('procedure-created') if state == 'PROCEDURE_CREATED_WAITING_COMPLETION' else take_review_screenshot('review-' + state.lower(), metadata)
     encoded, mime = _encode_review_screenshot(path)
     payload = {
         'state': state,
@@ -1096,28 +1102,14 @@ def _affirm_popup_live_fallback() -> bool:
 
 
 def _submit_unified_action():
-    try:
-        return HELPER.call('submit_unified_procedure')
-    except NavigationError as exc:
-        if exc.code not in ('submit_button_not_found','jab_unavailable','helper_unavailable'):
-            raise
-        if not _unified_submit_live_fallback():
-            raise
-        return {'operation':'procedure_submitted','method':'live_bounds_fallback'}
+    return HELPER.call('submit_unified_procedure')
 
 
-def _affirm_final_popup_action():
-    try:
-        return HELPER.call('affirm_current_popup')
-    except NavigationError as exc:
-        if exc.code not in ('final_confirmation_ambiguous','jab_unavailable','helper_unavailable'):
-            raise
-        if not _affirm_popup_live_fallback():
-            raise
-        return {'operation':'final_confirmation_clicked','method':'live_bounds_fallback'}
+def _affirm_final_popup_action(target=None, procedure_no=''):
+    return HELPER.call('affirm_current_popup', target=target or {}, procedure_no=procedure_no)
 
 
-def _wait_for_completion_decision(job_id: str, review_id: str):
+def _wait_for_completion_decision(job_id: str, review_id: str, target=None, procedure_no=''):
     """Wait after a real procedure number is created.
 
     No completion click is executed until the operator explicitly confirms it
@@ -1148,17 +1140,15 @@ def _wait_for_completion_decision(job_id: str, review_id: str):
                 raise NavigationError('invalid_review_decision', 'قرار إنجاز رقم الإجراء غير مدعوم')
             _progress(job_id, 'finalizing_procedure', 'تمت الموافقة. جاري تأكيد إنجاز رقم الإجراء الموحد...')
             try:
-                result = _affirm_final_popup_action()
+                result = _affirm_final_popup_action(target, procedure_no)
                 log('Final procedure confirmation clicked through JAB: ' + str(result.get('operation','')))
-            except NavigationError as exc:
-                # Some builds display the generated number first and only show
-                # the completion popup after clicking the same check control once more.
-                if exc.code != 'final_confirmation_ambiguous':
-                    raise
-                _submit_unified_action()
-                time.sleep(.45)
-                result = _affirm_final_popup_action()
-                log('Final procedure confirmation opened and accepted through JAB.')
+                if result.get('receipt'):
+                    proof_path=BASE/'diagnostics'/'completion-receipts'
+                    proof_path.mkdir(exist_ok=True)
+                    (proof_path/(job_id+'.json')).write_text(json.dumps({'jobId':job_id,'reviewId':review_id,'receipt':result['receipt']}),encoding='utf-8')
+            except NavigationError:
+                # Never repeat a create action to discover a completion button.
+                raise
             try:
                 requests.post(
                     api_url(f'/api/agent/jobs/{job_id}/review-resolved'),
@@ -1182,10 +1172,18 @@ def _click_live_node(node: dict, clicks: int = 1, interval: float = .04) -> bool
         return False
     if w < 4 or h < 4:
         return False
-    win = find_asycuda_window()
-    if not win:
-        return False
-    focus_window(win)
+    import win32gui, win32process
+    hwnd = int(node.get('windowHwnd') or 0)
+    current = HELPER.call('snapshot')
+    snapshot = current.get('snapshot') or {}
+    fresh = [n for n in snapshot.get('nodes', []) if n.get('windowHwnd') == hwnd and n.get('role') == node.get('role') and n.get('name') == node.get('name') and n.get('bounds') == b]
+    if not hwnd or len(fresh) != 1 or not win32gui.IsWindow(hwnd): return False
+    if win32process.GetWindowThreadProcessId(hwnd)[1] != snapshot.get('pid'): return False
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    if not (left <= x and top <= y and x+w <= right and y+h <= bottom): return False
+    try: win32gui.SetForegroundWindow(hwnd)
+    except Exception: return False
+    if win32gui.GetForegroundWindow() != hwnd: return False
     cx, cy = x + w // 2, y + h // 2
     if int(clicks) >= 2:
         pyautogui.doubleClick(cx, cy, interval=max(.02, float(interval)))
@@ -1216,6 +1214,8 @@ def _main_screen_live_click_fallback(job_id: str = '') -> bool:
     # If the page is already visible, open it immediately with the two clicks
     # required by this client build.
     pages = matches(visible_nodes, page_names)
+    if len(pages) > 1:
+        raise NavigationError('ambiguous_navigation_target', 'Multiple unified procedure pages match; review required')
     if pages:
         _progress(job_id, 'fast_open_unified_page', 'فتح رقم الإجراء الموحد...')
         return _click_live_node(pages[0], clicks=2, interval=.035)
@@ -1224,7 +1224,8 @@ def _main_screen_live_click_fallback(job_id: str = '') -> bool:
     if not folders:
         return False
 
-    folder = folders[0]
+    collapsed = [n for n in folders if 'expanded' not in n.get('states', [])]
+    folder = sorted(collapsed or folders, key=lambda n: n.get('index_in_parent', -1))[0]
     _progress(job_id, 'fast_expand_unified_folder', 'فتح مجلد الإجراء الموحد...')
     # Only double-click a collapsed folder. If accessibility already reports it
     # expanded, leave it open and proceed straight to the child page.
@@ -1245,18 +1246,32 @@ def _main_screen_live_click_fallback(job_id: str = '') -> bool:
         nodes2 = refreshed.get('snapshot', {}).get('nodes', [])
         visible2 = [n for n in nodes2 if 'showing' in n.get('states', [])]
         pages2 = matches(visible2, page_names)
+        if len(pages2) > 1:
+            raise NavigationError('ambiguous_navigation_target', 'Multiple unified procedure pages match; review required')
         if pages2:
             _progress(job_id, 'fast_open_unified_page', 'فتح رقم الإجراء الموحد...')
             return _click_live_node(pages2[0], clicks=2, interval=.035)
     return True
 
 
+
+def _navigate_main_with_jab(job_id=''):
+    result={}
+    try:
+        result = HELPER.call('step')
+        if result.get('operation') in ('click','expand'):
+            return True
+    except NavigationError as exc:
+        if exc.code not in ('jab_unavailable','helper_unavailable','navigation_action_failed'):
+            raise
+    if result.get('state')=='LOADING': return True
+    return _main_screen_live_click_fallback(job_id)
+
 def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
     """Fast path from a confirmed clean main screen.
 
-    Prefer live-bounds double-click navigation because this ASYCUDA tree opens
-    both the folder and document on double-click. JAB semantic actions remain
-    the secondary fallback.
+    Prefer JAB semantic navigation, then fresh verified bounds for double-click.
+    Never use saved desktop coordinates.
     """
     review_states = {
         'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN',
@@ -1266,7 +1281,7 @@ def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
     last = None
     for _ in range(max_steps):
         check_cancelled()
-        if _security_dialog():
+        if _security_dialog()[0] is not None:
             return {'state': 'SECURITY_WARNING', 'operation': 'wait'}
         native_modal = _find_asycuda_modal_window() if job_id else None
         if native_modal:
@@ -1277,7 +1292,7 @@ def _fast_main_navigation(job_id: str = '', max_steps: int = 6):
             return {'state': state, 'operation': 'review' if state in review_states else 'login'}
         if state == 'UNIFIED_PROCEDURE_OPEN':
             return {'state': state, 'operation': 'ready'}
-        if state == 'MAIN_SCREEN' and _main_screen_live_click_fallback(job_id):
+        if state == 'MAIN_SCREEN' and _navigate_main_with_jab(job_id):
             # Re-read immediately; if the page is already open, finish in this
             # same burst. Otherwise the next fast iteration continues.
             time.sleep(.04)
@@ -1329,24 +1344,18 @@ def _type_live_field(bounds: dict | None, value: str, *, interval: float = .018)
 
 
 def _force_fill_login_fields(response: dict, username: str, password: str) -> bool:
-    """Make the login visible on-screen, not only updated in Swing's model."""
-    ub = response.get('usernameBounds') or {}
-    pb = response.get('passwordBounds') or {}
-    if not _type_live_field(ub, username):
-        return False
-    if not _type_live_field(pb, password):
-        return False
-    return True
+    """JAB verified the actual username and password length without exporting them."""
+    return bool(response.get('fieldsVerified'))
 
 
 def _login_state(timeout: float = 1.0):
-    deadline = time.monotonic() + max(.2,float(timeout))
+    deadline = time.monotonic() + max(float(CFG.get('asycuda',{}).get('login_timeout_seconds',40)),float(timeout))
     last = None
     while time.monotonic() < deadline:
         check_cancelled()
         try:
             last = HELPER.call('snapshot')
-            if last.get('state') != 'LOGIN':
+            if last.get('state') not in ('LOGIN','LOADING'):
                 return last
         except NavigationError as exc:
             if exc.code not in ('jab_unavailable','helper_unavailable'):
@@ -1374,39 +1383,37 @@ def _visual_delta(before, after) -> float:
     return float(stat.mean[0] if stat.mean else 0.0)
 
 
-def _wait_for_creation_result(before_image, timeout: float = 15.0):
-    """Wait until creation has observable proof; never treat a static screen as success."""
-    deadline = time.monotonic() + max(3.0,float(timeout))
-    last = None
-    best_delta = 0.0
-    while time.monotonic() < deadline:
+def _is_completion_view(current):
+    target=(current or {}).get('target') or {}
+    return norm(target.get('name',''))==norm('انجاز المعاملة') and target.get('kind') in ('java_window','jab_popup')
+
+
+def _wait_for_creation_result(before_image, timeout: float = 30.0):
+    """A completion dialog can arrive before the form's barcode updates."""
+    deadline=time.monotonic()+max(3.0,float(timeout))
+    last=None
+    while time.monotonic()<deadline:
         check_cancelled()
         time.sleep(.20)
-        # A new native modal is a real server/UI response.
-        modal = _find_asycuda_modal_window()
-        if modal:
-            return {'ready':True,'reason':'modal','procedureNo':'','snapshot':last,'visualDelta':best_delta}
         try:
-            result = HELPER.call('read_unified_result')
-            number = ''.join(ch for ch in str(result.get('procedureNo') or '') if ch.isdigit())
-            if number:
-                return {'ready':True,'reason':'procedure_number','procedureNo':number,'snapshot':last,'visualDelta':best_delta}
+            result=HELPER.call('read_unified_result')
+            number=str(result.get('procedureNo') or '').strip()
+            if number and number.isascii() and number.isdigit():
+                current=HELPER.call('snapshot')
+                return {'ready':True,'reason':'procedure_number','procedureNo':number,'snapshot':current,'visualDelta':0.0}
         except NavigationError as exc:
             if exc.code not in ('result_field_not_found','jab_unavailable','helper_unavailable','unified_screen_not_ready'):
                 raise
         try:
-            last = HELPER.call('snapshot')
-            if last.get('state') not in ('UNIFIED_PROCEDURE_OPEN','LOADING'):
-                return {'ready':True,'reason':'state_changed','procedureNo':'','snapshot':last,'visualDelta':best_delta}
+            last=HELPER.call('snapshot')
+            if _is_completion_view(last):
+                continue # Observe only. Never click the completion checkmark here.
+            modal=_find_asycuda_modal_window()
+            if modal or last.get('state') not in ('UNIFIED_PROCEDURE_OPEN','LOADING'):
+                return {'ready':False,'reason':'unexpected_modal' if modal else 'unexpected_state','procedureNo':'','snapshot':last,'visualDelta':0.0}
         except NavigationError as exc:
-            if exc.code not in ('jab_unavailable','helper_unavailable'):
-                raise
-        delta = _visual_delta(before_image, _window_probe_image())
-        best_delta = max(best_delta, delta)
-        # Company validation may repaint a tiny area; require a meaningful change.
-        if delta >= 1.15:
-            return {'ready':True,'reason':'visual_change','procedureNo':'','snapshot':last,'visualDelta':delta}
-    return {'ready':False,'reason':'timeout','procedureNo':'','snapshot':last,'visualDelta':best_delta}
+            if exc.code not in ('jab_unavailable','helper_unavailable'): raise
+    return {'ready':False,'reason':'number_not_observed_before_deadline','procedureNo':'','snapshot':last,'visualDelta':0.0}
 
 
 def ensure_unified_procedure_screen(job_id: str = ''):
@@ -1419,7 +1426,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
     review_states = {'NOTIFICATIONS_POPUP', 'NOTIFICATIONS_PAGE', 'PREDECLARATION_OPEN', 'DECLARATION_OPEN', 'OTHER_PAGE_OPEN', 'UNKNOWN_POPUP', 'MANUAL_INTERVENTION', 'UNKNOWN_SCREEN', 'OS_MODAL_BLOCKER'}
     while time.monotonic() < deadline:
         check_cancelled()
-        if _security_dialog():
+        if _security_dialog()[0] is not None:
             trusted_warning, warning_detail = _configured_official_jnlp()
             if not trusted_warning:
                 raise NavigationError('manual_intervention_required', 'Security Warning appeared but official JNLP validation failed: ' + warning_detail)
@@ -1427,11 +1434,15 @@ def ensure_unified_procedure_screen(job_id: str = ''):
             previous, repeats = None, 0
             continue
 
-        # Native-login-first guard. Some Iraqi Java 8 launches expose the login
+        # JAB-first with a native fallback. Some Iraqi Java 8 launches expose the login
         # dialog visually but omit/alter JAB roles, which previously left the
         # Agent staring at a blank Login screen forever. Detect the small live
         # ASYCUDA login window directly and submit credentials immediately.
-        login_win = _native_login_window()
+        try:
+            jab_login = HELPER.call('snapshot', timeout=15)
+        except NavigationError:
+            jab_login = {}
+        login_win = _native_login_window() if not jab_login else None
         if login_win is not None and not login_sent:
             username, password = secret('asycuda_username'), secret('asycuda_password')
             if not username or not password:
@@ -1454,12 +1465,22 @@ def ensure_unified_procedure_screen(job_id: str = ''):
             raise NavigationError('login_failed', 'بقيت شاشة تسجيل الدخول مفتوحة بعد محاولتين. تحقق من الحساب أو حالة اتصال ASYCUDA.')
 
         try:
-            current = HELPER.call('snapshot')
+            current = jab_login or HELPER.call('snapshot')
             state = str(current.get('state') or 'LOADING')
+            save_ui_state(current, job_id, 'navigation', state)
         except NavigationError as exc:
             if exc.code not in ('jab_unavailable', 'helper_unavailable'):
                 raise
             time.sleep(.18)
+            continue
+
+        if state == 'LOADING':
+            # Disabled login fields are server initialization, not missing credentials.
+            time.sleep(.15)
+            continue
+
+        if state == 'UNIFIED_PROCEDURE_OFFSCREEN':
+            HELPER.call('reveal_unified_page')
             continue
 
         # Native Java modal watchdog. Old Java 8 can place JOptionPane in a
@@ -1569,9 +1590,7 @@ def ensure_unified_procedure_screen(job_id: str = ''):
             if response.get('operation') != 'login_filled':
                 raise NavigationError('login_failed', 'تعذر تجهيز حقول تسجيل الدخول في الأسيكودا')
 
-            # JAB updates the Swing model first. Then type into the exact live
-            # username/password bounds so the values are definitely visible and
-            # committed in this Java 8 client build.
+            # JAB verifies the actual username and password length before submission.
             if not _force_fill_login_fields(response, username, password):
                 raise NavigationError('login_failed', 'تم العثور على شاشة الدخول لكن تعذر الكتابة داخل حقول الحساب')
             log('ASYCUDA username/password written into the live login fields.')
@@ -1610,7 +1629,12 @@ def ensure_unified_procedure_screen(job_id: str = ''):
                 current = _login_state(8.0)
             if current and current.get('state') == 'LOGIN':
                 raise NavigationError('login_failed', 'بقيت شاشة تسجيل الدخول مفتوحة بعد كتابة الحساب والضغط على دخول. تحقق من اسم المستخدم وكلمة المرور.')
-            log('ASYCUDA login accepted; continuing immediately to Unified Procedure.')
+            if current and current.get('state') in review_states:
+                previous, repeats = None, 0
+                continue
+            if not current or current.get('state') not in ('MAIN_SCREEN','UNIFIED_PROCEDURE_OPEN','NOTIFICATIONS_POPUP'):
+                raise NavigationError('login_unverified', 'Login was submitted but a post-login screen was not detected')
+            log('[LOGIN] success')
             previous, repeats = None, 0
             continue
         marker = (result['state'], operation, result.get('target'))
@@ -1660,42 +1684,65 @@ def create_unified_procedure(job):
         raise NavigationError('navigation_changed', 'تغيرت شاشة الأسيكودا قبل إدخال رمز الشركة')
 
     _progress(job_id, 'entering_company_code', 'جاري إدخال رمز الشركة وتثبيته...')
-    filled = HELPER.call('set_company_code', company_code=code)
-    b = filled.get('bounds') or {}
-    # Explicitly commit the company code with Enter as required by this ASYCUDA build.
-    try:
-        x=int(b.get('x') or 0); y=int(b.get('y') or 0); w=int(b.get('width') or 0); h=int(b.get('height') or 0)
-        win=find_asycuda_window()
-        if win: focus_window(win)
-        if w>0 and h>0:
-            pyautogui.click(x+w//2, y+h//2)
-            # Numeric company codes are safe to retype after focusing the exact
-            # live JAB field. This covers Java builds where send_text() updates
-            # the model but the combo/editor does not visually commit it.
-            pyautogui.hotkey('ctrl','a')
-            pyautogui.write(code, interval=.025)
-        pyautogui.press('enter')
-    except Exception:
-        raise NavigationError('company_commit_failed', 'تم إدخال رمز الشركة لكن تعذر إرسال Enter لتثبيته')
+    import win32gui
+    win=find_asycuda_window()
+    if not win:
+        raise NavigationError('window_missing','ASYCUDA window disappeared before company input')
+    hwnd=int(win._hWnd)
+    if win32gui.GetForegroundWindow()!=hwnd:
+        try: Desktop(backend='win32').window(handle=hwnd).set_focus()
+        except Exception: pass
+    if win32gui.GetForegroundWindow()!=hwnd:
+        raise NavigationError('focus_failed','Windows did not activate ASYCUDA before company input')
+    HELPER.call('reset_procedure_binding')
+    existing = HELPER.call('read_unified_result')
+    if existing.get('procedureNo'):
+        raise NavigationError('procedure_already_exists','This form already has a unified number; no company data was changed')
 
-    # Give ASYCUDA a short event-loop turn, then let the normal review/navigation
-    # policy handle any validation popup instead of guessing through it.
-    time.sleep(.35)
-    current = HELPER.call('snapshot')
-    if current.get('state') != 'UNIFIED_PROCEDURE_OPEN':
-        ensure_unified_procedure_screen(job_id)
+    filled = HELPER.call('set_company_code', company_code=code)
+    if not filled.get('enterSent'):
+        raise NavigationError('company_commit_failed', 'Company editor did not verify the code and Enter commit')
+
+    log('[CREATE] company code entered')
+    log('[CREATE] Enter sent')
+    company = _wait_for_company_data(code, str(job.get('expectedCompanyName') or ''))
+    log('[CREATE] company data loaded')
+    if job.get('kind') == 'test_company':
+        path = take_screenshot('company-preflight')
+        return {'statusCode': 'COMPANY_PREFLIGHT_SUCCESS', 'message': 'Company loaded; create was not pressed.',
+                'screenshotTaken': True, 'screenshotName': path.name, 'companyVerified': True}
     check_cancelled()
 
     _progress(job_id, 'creating_procedure', 'تم تثبيت رمز الشركة. جاري إنشاء رقم الإجراء الموحد...')
-    before_create = _window_probe_image()
+    # Never create over an already registered document or repeat an uncertain click.
+    baseline = HELPER.call('read_unified_result')
+    if baseline.get('procedureNo'):
+        raise NavigationError('procedure_already_exists', 'This page already has a procedure number; create was not pressed')
+    journal = BASE / 'diagnostics' / 'creation-journal.json'
+    if journal.exists():
+        previous = json.loads(journal.read_text(encoding='utf-8'))
+        if previous.get('jobId') == job_id and previous.get('phase') in ('submitting','created'):
+            raise NavigationError('creation_already_attempted','Creation was already attempted for this job; inspect its saved result instead of creating again')
+    if journal.exists():
+        history=BASE/'diagnostics'/'creation-history'
+        history.mkdir(exist_ok=True)
+        previous=json.loads(journal.read_text(encoding='utf-8'))
+        key=re.sub(r'[^a-zA-Z0-9_-]','_',str(previous.get('jobId') or 'unknown'))
+        (history/(key+'.json')).write_text(json.dumps(previous),encoding='utf-8')
+    journal.write_text(json.dumps({'jobId':job_id,'companyCode':code,'phase':'submitting','timestamp':time.time()}),encoding='utf-8')
+    before_create = None
     _submit_unified_action()
+    log('[CREATE] create pressed')
 
-    proof = _wait_for_creation_result(before_create, 15.0)
+    proof = _wait_for_creation_result(before_create, 45.0)
     if not proof.get('ready'):
-        raise NavigationError('procedure_creation_unverified', 'تم الضغط على إنشاء لكن لم يظهر رقم أو نتيجة جديدة خلال المهلة. لم يعتبر النظام العملية ناجحة.')
-    last = proof.get('snapshot') or {}
+        evidence=proof.get('snapshot') or HELPER.call('snapshot')
+        save_ui_state(evidence,job_id,'creation_result_unverified','create_pressed',str(proof.get('reason')))
+        raise NavigationError('procedure_creation_unverified', 'Creation was pressed once; result requires review: ' + str(proof.get('reason')) + '. Do not repeat creation.')
+    last = proof.get('snapshot') or HELPER.call('snapshot')
     procedure_no = ''.join(ch for ch in str(proof.get('procedureNo') or '') if ch.isdigit())
-    log('Unified procedure creation response verified: ' + str(proof.get('reason') or 'unknown'))
+    journal.write_text(json.dumps({'jobId':job_id,'companyCode':code,'phase':'created','procedureNo':procedure_no,'timestamp':time.time()}),encoding='utf-8')
+    log('[CREATE] procedure number detected: ' + procedure_no)
 
     metadata = _review_metadata(last or {}, 'PROCEDURE_CREATED_WAITING_COMPLETION', {
         'companyCode': code,
@@ -1705,23 +1752,28 @@ def create_unified_procedure(job):
     })
     review_id = _send_review(job_id, 'PROCEDURE_CREATED_WAITING_COMPLETION', metadata)
     _progress(job_id, 'procedure_created_waiting_completion', 'تم إنشاء رقم الإجراء ورفع صورة النتيجة. بانتظار قرارك لإنجاز الرقم.')
-    _wait_for_completion_decision(job_id, review_id)
+    save_ui_state(last,job_id,'WAITING_FOR_COMPLETION_APPROVAL','procedure_created')
+    log('[REVIEW] WAITING_FOR_COMPLETION_APPROVAL')
+    checkpoint = {'jobId':job_id, 'reviewId':review_id, 'procedureNo':procedure_no, 'target':last.get('target') or {}}
+    (BASE/'diagnostics'/'completion-checkpoint.json').write_text(json.dumps(checkpoint),encoding='utf-8')
+    return _complete_created_job(checkpoint)
+
+
+def _complete_created_job(checkpoint):
+    job_id=checkpoint['jobId']; review_id=checkpoint['reviewId']; procedure_no=checkpoint['procedureNo']
+    _wait_for_completion_decision(job_id, review_id, checkpoint.get('target'), procedure_no)
     check_cancelled()
 
-    # Allow the final confirmation to settle, then capture proof of the completed
-    # state. If a new unexpected popup remains, surface it through the review loop
-    # rather than clicking blindly.
-    time.sleep(.65)
-    try:
-        after = HELPER.call('snapshot')
-        if after.get('state') in ('UNKNOWN_POPUP','MANUAL_INTERVENTION','NOTIFICATIONS_POPUP'):
-            state=str(after.get('state'))
-            meta=_review_metadata(after,state)
-            rid=_send_review(job_id,state,meta)
-            _wait_for_review_decision(job_id,rid,state,meta)
-    except NavigationError as exc:
-        if exc.code not in ('jab_unavailable','helper_unavailable'):
-            raise
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        check_cancelled()
+        completion_proof = HELPER.call('read_completion_result', target=checkpoint.get('target'), procedure_no=procedure_no)
+        if completion_proof.get('verified'):
+            log('[COMPLETE] completion confirmed')
+            break
+        time.sleep(.15)
+    else:
+        raise NavigationError('completion_unverified', 'Confirmation was clicked but ASYCUDA did not report successful completion.')
 
     final_path = take_screenshot('unified-completed')
     return {
@@ -1739,7 +1791,8 @@ def take_screenshot(label: str):
     if not win or win.isMinimized:
         raise NavigationError('screenshot_failed', 'تعذر التقاط نافذة الأسيكودا')
     region = (int(win.left), int(win.top), int(win.width), int(win.height))
-    img = pyautogui.screenshot(region=region)
+    from window_capture import capture_hwnd
+    img = capture_hwnd(int(win._hWnd))
     # File names are intentionally ASCII-only to avoid Windows locale/charmap issues.
     safe = ''.join(c for c in str(label) if c.isascii() and (c.isalnum() or c in '-_')) or 'test'
     filename = f'{safe}_{time.strftime("%Y-%m-%d_%H-%M-%S")}_{time.time_ns() % 1000000:06d}.png'
@@ -1793,6 +1846,7 @@ def run_navigation_test(job=None):
     path = take_screenshot('test')
     if HELPER.call('snapshot')['state'] != 'UNIFIED_PROCEDURE_OPEN':
         raise NavigationError('navigation_changed', 'تغيرت شاشة الأسيكودا أثناء التقاط الصورة')
+    save_ui_state(HELPER.call('snapshot'), job_id, 'navigation_test', 'UNIFIED_PROCEDURE_OPEN')
     return {'statusCode': 'TEST_SUCCESS',
             'message': 'تم الوصول إلى شاشة رقم الإجراء الموحد بنجاح ولم يتم إنشاء أي إجراء.',
             'unifiedProcedureNo': '', 'whatsappSent': False,
@@ -1804,10 +1858,16 @@ def run_test_job(job):
 
 
 def run_job(job):
+    with UI_LOCK:
+        return _run_job_locked(job)
+
+def _run_job_locked(job):
     kind = job.get('kind')
+    if kind == 'resume_completion':
+        return _complete_created_job(job['checkpoint'])
     if kind in ('test', 'test_navigation'):
         return run_navigation_test(job)
-    if kind in ('execute', 'create_unified_procedure'):
+    if kind in ('execute', 'create_unified_procedure', 'test_company'):
         return create_unified_procedure(job)
     raise NavigationError('invalid_job_kind', 'نوع الطلب غير مدعوم')
 
@@ -1847,17 +1907,80 @@ def complete_job(job_id: str, ok: bool, result=None, error=''):
                     encoded, mime = _encode_review_screenshot(shot_path)
                     payload['screenshotBase64'] = encoded
                     payload['screenshotMime'] = mime
-                except Exception:
-                    pass
+                except Exception as exc:
+                    raise NavigationError('final_screenshot_encode_failed', 'Final screenshot encoding failed') from exc
+            else:
+                raise NavigationError('final_screenshot_missing', 'Final screenshot file is missing')
     r = requests.post(api_url('/api/agent/complete'), headers=cloud_headers(), json=payload, timeout=25)
     r.raise_for_status()
+
+
+def security_warning_guard(stop):
+    """Always-on guard for the official ASYCUDA Java Security Warning.
+
+    It is intentionally independent from cloud jobs. The Java warning may
+    appear before a job is claimed, after a previous Java Web Start launch,
+    or while the web UI is still polling.  If and only if the configured JNLP
+    validates to the official HTTPS asy.mof.gov.iq launcher, accept that
+    warning immediately.
+    """
+    while not stop.is_set():
+        try:
+            if CURRENT_CANCEL_EVENT is not None:
+                stop.wait(.15)
+                continue
+            dlg, _ = _security_dialog()
+            if dlg is not None:
+                trusted, detail = _configured_official_jnlp()
+                if not trusted:
+                    log('SECURITY_GUARD_BLOCKED: ' + detail)
+                    stop.wait(.35)
+                    continue
+                with SECURITY_WARNING_LOCK:
+                    if _security_dialog()[0] is not None:
+                        _click_security_warning_if_present(5, trusted_launch=True)
+                        log('Continuous Security Guard accepted official Java warning.')
+            stop.wait(.12)
+        except NavigationError as exc:
+            log('SECURITY_GUARD: ' + str(exc))
+            stop.wait(.4)
+        except Exception:
+            stop.wait(.4)
+
+
+def login_window_guard(stop):
+    attempts = {}
+    while not stop.wait(.25):
+        if CURRENT_CANCEL_EVENT is not None or _security_dialog()[0] is not None:
+            continue
+        candidate = _native_login_window()
+        if candidate is None:
+            continue
+        hwnd = int(getattr(candidate, '_hWnd', 0) or getattr(candidate, 'handle', 0))
+        if attempts.get(hwnd, 0) >= 1:
+            continue
+        with LOGIN_GUARD_LOCK:
+            try:
+                current=HELPER.call('snapshot')
+                if current.get('state') != 'LOGIN': continue
+                attempts[hwnd]=attempts.get(hwnd,0)+1
+                username,password=secret('asycuda_username'),secret('asycuda_password')
+                if not username or not password: continue
+                filled=HELPER.call('step',credentials={'username':username,'password':password})
+                if not filled.get('fieldsVerified'):
+                    raise NavigationError('login_fields_unverified','Login fields could not be verified')
+                HELPER.call('submit_login')
+                log('[LOGIN] verified fields; login submitted')
+            except Exception as exc:
+                log('[LOGIN] ' + getattr(exc,'code',type(exc).__name__))
 
 
 def heartbeat(stop):
     while not stop.is_set():
         try:
+            _write_runtime_state()
             response = requests.post(api_url('/api/agent/heartbeat'), headers=cloud_headers(),
-                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate','visible-frame-review','doubleclick-fastpath','security-warning-regression-guard','review-every-open-page','verified-live-login','verified-creation-result']}, timeout=15)
+                json={'version': VERSION, 'state': AGENT_STATE, 'capabilities': ['jab32','screen-memory','safe-planner','native-window-watchdog','interactive-review','fast-main-navigation','production-unified-flow','company-enter-commit','operator-finalize-gate','visible-frame-review','doubleclick-fastpath','security-warning-regression-guard','review-every-open-page','verified-live-login','verified-creation-result','continuous-security-guard','exact-login-window','continuous-login-guard']}, timeout=15)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code
@@ -1867,25 +1990,48 @@ def heartbeat(stop):
         stop.wait(10)
 
 
+def flush_verified_completion_recovery():
+    path=BASE/'pending-completion-recovery.json'
+    if not path.exists():return
+    payload=json.loads(path.read_text(encoding='utf-8'))
+    response=requests.post(api_url('/api/agent/complete'),headers=cloud_headers(),json=payload,timeout=25)
+    response.raise_for_status()
+    result=response.json().get('job') or {}
+    if result.get('status')=='done' and result.get('unifiedProcedureNo')==payload.get('unifiedProcedureNo'):
+        archived=BASE/'diagnostics'/'completed-recovery.json'
+        archived.write_text(json.dumps({'jobId':payload['id'],'procedureNo':payload['unifiedProcedureNo'],'verifiedAt':time.time()}),encoding='utf-8')
+        path.unlink()
+        log('[COMPLETE] recovered completed status and final screenshot; no UI actions repeated')
+
+
 def main():
     global AGENT_STATE, CURRENT_CANCEL_EVENT
     _instance_lock = acquire_instance_lock()
     stop = threading.Event()
     threading.Thread(target=heartbeat, args=(stop,), daemon=True).start()
+    threading.Thread(target=security_warning_guard, args=(stop,), daemon=True).start()
+    threading.Thread(target=login_window_guard, args=(stop,), daemon=True).start()
     outbox = BASE / 'pending-result.json'
     poll = max(2, int(CFG.get('cloud', {}).get('poll_seconds', 3)))
+    _write_runtime_state()
     log('Tarabil Cloud Agent ' + VERSION)
     try:
         while not (BASE / 'STOP_AGENT').exists():
             try:
+                flush_verified_completion_recovery()
                 # Persist completion before sending; network failures never repeat UI actions.
                 if outbox.exists():
                     completion = json.loads(outbox.read_text(encoding='utf-8'))
                     complete_job(**completion)
                     outbox.unlink()
-                response = requests.get(api_url('/api/agent/next'), headers=cloud_headers(), timeout=25)
-                response.raise_for_status()
-                job = response.json().get('job')
+                checkpoint_path=BASE/'diagnostics'/'completion-checkpoint.json'
+                if checkpoint_path.exists():
+                    checkpoint=json.loads(checkpoint_path.read_text(encoding='utf-8'))
+                    job={'id':checkpoint['jobId'],'kind':'resume_completion','checkpoint':checkpoint}
+                else:
+                    response = requests.get(api_url('/api/agent/next'), headers=cloud_headers(), timeout=25)
+                    response.raise_for_status()
+                    job = response.json().get('job')
                 if not job:
                     stop.wait(poll)
                     continue
@@ -1925,9 +2071,7 @@ def main():
                             diag_dir = BASE / 'diagnostics'
                             diag_dir.mkdir(exist_ok=True)
                             snap = HELPER.call('snapshot', timeout=10)
-                            (diag_dir / 'last-ui-state.json').write_text(
-                                json.dumps(snap, ensure_ascii=False, indent=2), encoding='utf-8'
-                            )
+                            save_ui_state(snap, str(job['id']), 'failed', error=str(exc))
                         except Exception:
                             pass
                 finally:
@@ -1936,6 +2080,7 @@ def main():
                 temp = outbox.with_suffix('.tmp')
                 temp.write_text(json.dumps(completion, ensure_ascii=True), encoding='utf-8')
                 temp.replace(outbox)
+                if checkpoint_path.exists(): checkpoint_path.unlink()
             except requests.HTTPError as exc:
                 log('AUTH_ERROR' if exc.response.status_code in (401, 403) else 'SERVER_ERROR')
                 stop.wait(max(poll, 5))
@@ -1953,6 +2098,53 @@ def _safe_error_screenshot():
     try: return take_screenshot('navigation-error')
     except Exception: return None
 
+
+
+
+
+
+def save_ui_state(current=None, job_id='', step='', last_success='', error=''):
+    current = current or {}
+    snap = current.get('snapshot') or {}
+    windows = snap.get('javaWindows') or []
+    data = {'current_state': current.get('state','UNKNOWN'), 'windows': windows,
+            'HWND': snap.get('mainHwnd'), 'PID': snap.get('pid'),
+            'class_name': next((w.get('className') for w in windows if w.get('main')), None),
+            'bounds': next((w.get('rect') for w in windows if w.get('main')), None),
+            'JAB_state': 'connected' if snap else 'unavailable', 'current_job_id': job_id,
+            'current_step': step, 'last_successful_step': last_success, 'error_reason': error,
+            'version': VERSION, 'timestamp': time.time()}
+    folder = BASE / 'diagnostics'; folder.mkdir(exist_ok=True)
+    (folder / 'last-ui-state.json').write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+STARTED_AT = time.time()
+RUNTIME_STATE_LOCK = threading.Lock()
+SOURCE_HASHES = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in BASE.glob('*.py')}
+
+def _write_runtime_state():
+    with RUNTIME_STATE_LOCK:
+        return _write_runtime_state_locked()
+
+def _write_runtime_state_locked():
+    folder = BASE / 'diagnostics'
+    folder.mkdir(exist_ok=True)
+    data = {'version': VERSION, 'pid': os.getpid(), 'startedAt': STARTED_AT,
+            'updatedAt': time.time(), 'sourceHashes': SOURCE_HASHES,
+            'diskMatchesLoadedSources': all((BASE / name).exists() and hashlib.sha256((BASE / name).read_bytes()).hexdigest() == digest for name, digest in SOURCE_HASHES.items())}
+    target = folder / 'runtime-state.json'
+    tmp = target.with_suffix('.tmp')
+    tmp.write_text(json.dumps(data, indent=2), encoding='utf-8')
+    tmp.replace(target)
+
+def _wait_for_company_data(code, expected_name='', timeout=12):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        check_cancelled()
+        result = HELPER.call('read_company_data', company_code=code, expected_name=expected_name)
+        if result.get('verified'):
+            return result
+        time.sleep(.15)
+    raise NavigationError('company_data_unverified', 'Company code was entered and Enter sent, but matching company data did not load; creation was not pressed.')
 
 if __name__ == '__main__':
     main()

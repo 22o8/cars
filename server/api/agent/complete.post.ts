@@ -10,8 +10,26 @@ export default defineEventHandler(async (event) => {
   const job = await getJson<UnifiedCloudJob>(event, jobKey(id))
   if (!job) return { ok: true, deleted: true }
   if (job.deviceId !== deviceId) throw createError({ statusCode: 403, statusMessage: 'wrong device' })
-  if (job.status === 'done' || job.status === 'failed' || job.status === 'cancelled') return { ok: true, job }
-  if (!['processing', 'needs_review', 'cancelling'].includes(job.status)) throw createError({ statusCode: 409, statusMessage: 'job is not processing' })
+  // Recover only the known false failure after an operator-approved completion.
+  // This never enqueues a job or repeats an ASYCUDA action.
+  const recovering = body?.recoverCompleted === true
+  if (recovering && job.status !== 'done') {
+    const receipt = body?.completionReceipt
+    const expectedNumber = String(job.review?.metadata?.procedureNo || '')
+    if (job.status !== 'failed' || job.statusCode !== 'completion_identity_changed' || job.cancelRequested ||
+        job.review?.state !== 'PROCEDURE_CREATED_WAITING_COMPLETION' || job.review.decision !== 'finalize_and_complete' ||
+        !job.review.resolvedAt || !expectedNumber || body?.unifiedProcedureNo !== expectedNumber ||
+        body?.reviewId !== job.review.id || body?.ok !== true || body?.statusCode !== 'PROCEDURE_COMPLETED' ||
+        receipt?.procedureNo !== expectedNumber || receipt?.serverSuccess !== true || receipt?.confirmationClicked !== true ||
+        receipt?.dialogClosed !== true || receipt?.hwnd !== job.review.metadata?.target?.windowHwnd ||
+        body?.screenshotTaken !== true || !body?.screenshotBase64 || body.screenshotBase64.length > 4_000_000 ||
+        !/^image\/(jpeg|png|webp)$/i.test(String(body?.screenshotMime || ''))) {
+      throw createError({ statusCode: 409, statusMessage: 'verified completion recovery evidence required' })
+    }
+    job.completionRecovery = { previousStatusCode: job.statusCode, reviewId: job.review.id, recoveredAt: new Date().toISOString() }
+  }
+  if (job.status === 'done' || job.status === 'cancelled' || (job.status === 'failed' && !recovering)) return { ok: true, job }
+  if (!recovering && !['processing', 'needs_review', 'cancelling'].includes(job.status)) throw createError({ statusCode: 409, statusMessage: 'job is not processing' })
 
   const statusCode = String(body?.statusCode || '').slice(0, 80)
   const cancelled = statusCode === 'cancelled_by_user' || job.cancelRequested === true

@@ -3,13 +3,12 @@ $root=(Resolve-Path $PSScriptRoot).Path
 $stopFile=Join-Path $root 'STOP_AGENT'
 Write-Host 'Requesting a safe Tarabil Agent restart...'
 New-Item -ItemType File -Path $stopFile -Force | Out-Null
-try { Stop-ScheduledTask -TaskName 'TarabilAsycudaAgent' -ErrorAction SilentlyContinue } catch {}
 
 $escaped=[regex]::Escape($root)
 $deadline=(Get-Date).AddSeconds(20)
 do {
   $running=Get-CimInstance Win32_Process | Where-Object {
-    $_.CommandLine -and $_.CommandLine -match $escaped -and $_.CommandLine -match '(agent\.py|watchdog\.py|jab_helper\.py)'
+    $_.Name -in @('python.exe','pythonw.exe') -and $_.CommandLine -and $_.CommandLine -match $escaped -and $_.CommandLine -match '(agent\.py|watchdog\.py|jab_helper\.py)'
   }
   if(!$running){ break }
   Start-Sleep -Milliseconds 500
@@ -26,6 +25,6 @@ if($task){
   Start-ScheduledTask -TaskName 'TarabilAsycudaAgent'
   Write-Host 'Agent restarted through Task Scheduler.'
 }else{
-  Start-Process -FilePath 'wscript.exe' -ArgumentList ('"' + (Join-Path $root 'run-agent-hidden.vbs') + '"')
+  Start-Process -WindowStyle Hidden -FilePath 'wscript.exe' -ArgumentList ('"' + (Join-Path $root 'run-agent-hidden.vbs') + '"')
   Write-Host 'Agent restarted in hidden mode. Run install-autostart.bat to enable automatic startup.'
 }

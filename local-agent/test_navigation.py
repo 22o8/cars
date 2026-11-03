@@ -46,13 +46,13 @@ class PolicyTests(unittest.TestCase):
   tree=ast.parse(Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig'))
   function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run_navigation_test')
   calls={n.func.id for n in ast.walk(function) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name)}
-  self.assertEqual(calls,{'check_cancelled','ensure_unified_procedure_screen','take_screenshot','NavigationError'})
+  self.assertEqual(calls,{'check_cancelled','ensure_unified_procedure_screen','take_screenshot','NavigationError','save_ui_state'})
  def _isolated_job_functions(self):
   tree=ast.parse(Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig'))
-  wanted=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='run_job']
+  wanted=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name in ('run_job','_run_job_locked')]
   module=ast.Module(body=wanted,type_ignores=[])
   ast.fix_missing_locations(module)
-  ns={'NavigationError':NavigationError,'run_navigation_test':lambda job=None:{'mode':'test'},'create_unified_procedure':lambda job:{'mode':'execute','companyCode':job.get('companyCode')}}
+  ns={'UI_LOCK':__import__('threading').RLock(),'NavigationError':NavigationError,'run_navigation_test':lambda job=None:{'mode':'test'},'create_unified_procedure':lambda job:{'mode':'execute','companyCode':job.get('companyCode')}}
   exec(compile(module,'agent.py','exec'),ns)
   return ns
  def test_unknown_job_never_infers_execute(self):
@@ -138,7 +138,8 @@ class SmartLoginRegressionTests(unittest.TestCase):
     def test_helper_does_not_require_named_login_button(self):
         text = Path(__file__).with_name('jab_helper.py').read_text(encoding='utf-8-sig')
         self.assertIn("action['operation'] = 'login_filled'", text)
-        self.assertNotIn("buttons[0]['id']", text)
+        login_block = text[text.index("if request['command'] == 'submit_login':"):text.index("if request['command'] != 'step':")]
+        self.assertNotIn("buttons[0]['id']", login_block)
 
     def test_agent_prefers_jab_login_button_and_verifies_login_exit(self):
         text = Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
@@ -216,7 +217,7 @@ class VisibleFrameRegressionTests(unittest.TestCase):
         text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
         self.assertIn('pyautogui.doubleClick', text)
         self.assertIn("clicks=2", text)
-        self.assertIn("VERSION = '9.4.0-native-login-first'", text)
+        self.assertIn("VERSION = '9.9.4-verified-completion'", text)
 
 
 
@@ -261,18 +262,64 @@ class CoreInvariantRegressionTests(unittest.TestCase):
 
 
 class NativeLoginFirstRegressionTests(unittest.TestCase):
-    def test_native_login_fallback_is_before_jab_snapshot(self):
+    def test_native_login_fallback_is_after_jab_snapshot(self):
         text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
         self.assertIn('_native_login_window()', text)
         self.assertIn('_native_login_fill_and_submit(username, password)', text)
-        self.assertLess(text.index("login_win = _native_login_window()"), text.index("current = HELPER.call('snapshot')", text.index('def ensure_unified_procedure_screen')))
+        self.assertLess(text.index("jab_login = HELPER.call('snapshot'"), text.index("login_win = _native_login_window()"))
 
     def test_native_login_uses_live_window_relative_points_and_is_bounded(self):
         text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
-        self.assertIn("width * .76", text)
-        self.assertIn("height * .405", text)
-        self.assertIn("width * .835", text)
+        self.assertIn("CurrentIsPassword", text)
+        self.assertIn("native field verification unavailable", text)
+        self.assertNotIn("width * .835", text)
         self.assertIn('_wait_native_login_exit(18.0)', text)
         self.assertIn('native_login_attempts < 2', text)
 
 if __name__=='__main__': unittest.main()
+
+
+class ContinuousCoreGuardTests(unittest.TestCase):
+    def _agent_text(self):
+        return Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
+
+    def test_security_warning_guard_is_always_on(self):
+        text = self._agent_text()
+        self.assertIn('def security_warning_guard(stop):', text)
+        self.assertIn('threading.Thread(target=security_warning_guard', text)
+        self.assertIn('_configured_official_jnlp()', text)
+        self.assertIn('_click_security_warning_if_present(5, trusted_launch=True)', text)
+
+    def test_full_core_sequence_remains_present(self):
+        text = self._agent_text()
+        required = [
+            'def launch_asycuda():',
+            'def ensure_unified_procedure_screen',
+            'def _native_login_fill_and_submit',
+            'review_states =',
+            'def create_unified_procedure',
+            "send_keys('{ENTER}'",
+            '_wait_for_creation_result',
+        ]
+        for token in required:
+            self.assertIn(token, text)
+
+
+class ExactLoginGuardRegressionTests(unittest.TestCase):
+    def test_login_detector_does_not_use_largest_window_helper(self):
+        text = Path(__file__).with_name('agent.py').read_text(encoding='utf-8')
+        block = text[text.index('def _native_login_window():'):text.index('def _native_login_fill_and_submit')]
+        self.assertNotIn('return find_asycuda_window()', block)
+        self.assertIn('gw.getAllTitles()', block)
+        self.assertIn('280 <= width <= 760', block)
+
+    def test_continuous_login_guard_is_started(self):
+        text = Path(__file__).with_name('agent.py').read_text(encoding='utf-8')
+        self.assertIn('def login_window_guard(stop):', text)
+        self.assertIn('threading.Thread(target=login_window_guard', text)
+        self.assertIn("secret('asycuda_username')", text)
+        self.assertIn("secret('asycuda_password')", text)
+
+    def test_version_exact_login_guard(self):
+        text = Path(__file__).with_name('agent.py').read_text(encoding='utf-8')
+        self.assertIn("VERSION = '9.9.4-verified-completion'", text)

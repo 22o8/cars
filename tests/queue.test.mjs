@@ -122,3 +122,22 @@ test('keep-and-stop decision cancels the job',async()=>{
  const decided=await reviewDecision({...mobile(),params:{id:job.id},body:{action:'keep_and_stop'}})
  assert.equal(decided.job.status,'cancelled');assert.equal(decided.job.cancelRequested,true)
 })
+
+test('approved completion false failure can be recovered without requeueing',async()=>{
+ const {job}=await testJob(mobile());job.kind='execute';job.status='failed';job.statusCode='completion_identity_changed'
+ job.review={id:'approved-review',state:'PROCEDURE_CREATED_WAITING_COMPLETION',decision:'finalize_and_complete',resolvedAt:'2026-11-04T00:00:00Z',metadata:{procedureNo:'2601000497',target:{windowHwnd:42}}}
+ store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+ const payload={id:job.id,ok:true,recoverCompleted:true,reviewId:'approved-review',statusCode:'PROCEDURE_COMPLETED',unifiedProcedureNo:'2601000497',screenshotTaken:true,screenshotBase64:'VALID_IMAGE_FIXTURE',screenshotMime:'image/png',completionReceipt:{procedureNo:'2601000497',hwnd:42,serverSuccess:true,confirmationClicked:true,dialogClosed:true}}
+ const queueBefore=[...store.get('tarabil:unified:queue:test-device')]
+ await assert.rejects(()=>complete(agent({...payload,unifiedProcedureNo:'WRONG'})),{statusCode:409})
+ const result=await complete(agent(payload))
+ assert.equal(result.job.status,'done');assert.equal(result.job.unifiedProcedureNo,'2601000497')
+ assert.equal(result.job.completionRecovery.previousStatusCode,'completion_identity_changed')
+ assert.deepEqual(store.get('tarabil:unified:queue:test-device'),queueBefore)
+})
+
+test('completion recovery cannot bypass approval',async()=>{
+ const {job}=await testJob(mobile());job.status='failed';job.statusCode='completion_identity_changed'
+ store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+ await assert.rejects(()=>complete(agent({id:job.id,recoverCompleted:true,ok:true})),{statusCode:409})
+})

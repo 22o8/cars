@@ -43,6 +43,7 @@ export interface UnifiedCloudJob {
   deleteAfterCancel?: boolean
   review?: UnifiedReview
   reviewHistory?: UnifiedReview[]
+  completionRecovery?: { previousStatusCode: string; reviewId: string; recoveredAt: string }
 }
 
 export const queueKey = (deviceId: string) => `tarabil:unified:queue:${deviceId}`
