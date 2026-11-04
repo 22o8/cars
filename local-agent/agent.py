@@ -30,7 +30,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.9.5-single-page-batches'
+VERSION = '9.9.6-whatsapp-completion'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -1822,39 +1822,24 @@ def take_screenshot(label: str):
     return path
 
 
-def send_whatsapp(path: Path, to: str, serial: str, company_name: str, result_no: str) -> bool:
-    wa = CFG.get('whatsapp', {})
-    if not wa.get('enabled'):
-        return False
-    version = (wa.get('graph_version') or '').strip()
-    token = secret('whatsapp_access_token')
-    phone_id = secret('whatsapp_phone_number_id')
-    if not version or not token or not phone_id:
-        raise RuntimeError('WhatsApp Cloud API settings are incomplete.')
-    to = ''.join(ch for ch in to if ch.isdigit())
-    if not to:
-        raise RuntimeError('WhatsApp number is invalid.')
-    base = f'https://graph.facebook.com/{version}/{phone_id}'
-    with path.open('rb') as f:
-        up = requests.post(
-            f'{base}/media',
-            headers={'Authorization': f'Bearer {token}'},
-            data={'messaging_product': 'whatsapp'},
-            files={'file': ('unified.png', f, 'image/png')},
-            timeout=30,
-        )
-    up.raise_for_status()
-    media_id = up.json()['id']
-    caption_tpl = wa.get('caption') or 'Unified procedure: {procedureNo} - {serial} - {companyName}'
-    caption = caption_tpl.format(procedureNo=result_no or 'see image', serial=serial, companyName=company_name)
-    msg = requests.post(
-        f'{base}/messages',
-        headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
-        json={'messaging_product': 'whatsapp', 'to': to, 'type': 'image', 'image': {'id': media_id, 'caption': caption}},
-        timeout=30,
-    )
-    msg.raise_for_status()
-    return True
+def whatsapp_dispatch_once():
+    # The server authorizes only completed jobs with matching operator approval.
+    # This endpoint can never create or interact with an ASYCUDA procedure.
+    response = requests.post(api_url('/api/agent/whatsapp/dispatch'), headers=cloud_headers(), timeout=45)
+    if response.status_code == 404:
+        return  # Compatible with the previously deployed website until upgraded.
+    response.raise_for_status()
+    if response.json().get('accepted'):
+        log('[WHATSAPP] message accepted; awaiting delivery webhook')
+
+
+def whatsapp_worker(stop):
+    while not stop.wait(10):
+        try:
+            whatsapp_dispatch_once()
+        except Exception:
+            # Delivery has its own durable server state and never fails a UI job.
+            log('[WHATSAPP] dispatch unavailable; procedure state unchanged')
 
 
 def run_navigation_test(job=None):
@@ -2029,6 +2014,7 @@ def main():
     global AGENT_STATE, CURRENT_CANCEL_EVENT
     _instance_lock = acquire_instance_lock()
     stop = threading.Event()
+    threading.Thread(target=whatsapp_worker, args=(stop,), daemon=True).start()
     threading.Thread(target=heartbeat, args=(stop,), daemon=True).start()
     threading.Thread(target=security_warning_guard, args=(stop,), daemon=True).start()
     threading.Thread(target=login_window_guard, args=(stop,), daemon=True).start()

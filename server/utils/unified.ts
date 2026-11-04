@@ -32,6 +32,7 @@ export interface UnifiedCloudJob {
   startedAt?: string
   finishedAt?: string
   unifiedProcedureNo?: string
+  whatsappDelivery?: import('./whatsapp').WhatsAppDelivery | null
   whatsappSent?: boolean
   screenshotTaken?: boolean
   screenshotName?: string

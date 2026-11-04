@@ -1,3 +1,4 @@
+import { enqueueWhatsApp } from '../../utils/whatsapp'
 import { getJson, redisCommand, setJson } from '../../utils/redis'
 import { requireAgent } from '../../utils/security'
 import { finalScreenshotKey, jobKey, recentKey, type UnifiedCloudJob } from '../../utils/unified'
@@ -28,7 +29,8 @@ export default defineEventHandler(async (event) => {
     }
     job.completionRecovery = { previousStatusCode: job.statusCode, reviewId: job.review.id, recoveredAt: new Date().toISOString() }
   }
-  if (job.status === 'done' || job.status === 'cancelled' || (job.status === 'failed' && !recovering)) return { ok: true, job }
+  if (job.status === 'done') { await enqueueWhatsApp(event, job); return { ok: true, job } }
+  if ( job.status === 'cancelled' || (job.status === 'failed' && !recovering)) return { ok: true, job }
   if (!recovering && !['processing', 'needs_review', 'cancelling'].includes(job.status)) throw createError({ statusCode: 409, statusMessage: 'job is not processing' })
 
   const statusCode = String(body?.statusCode || '').slice(0, 80)
@@ -62,5 +64,6 @@ export default defineEventHandler(async (event) => {
   }
 
   await setJson(event, jobKey(id), job)
+  await enqueueWhatsApp(event, job)
   return { ok: true, job }
 })

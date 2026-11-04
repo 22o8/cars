@@ -127,6 +127,17 @@ async function retry(){
   catch(e:any){ errorMessage.value=e?.data?.statusMessage || 'تعذر إعادة المحاولة' }
   finally{ busy.value=false }
 }
+function whatsappLabel(){
+ const state=job.value?.whatsappDelivery?.status
+ return ({queued:'بانتظار إرسال إشعار الإنجاز',sending:'جاري الإرسال',accepted:'قبل واتساب الرسالة — بانتظار تأكيد الوصول',delivered:'وصلت الرسالة',read:'تمت قراءة الرسالة',failed:'تعذر إرسال رسالة واتساب',unknown:'نتيجة الإرسال غير مؤكدة — ننتظر تحديث واتساب',skipped:'لم يُرسل إشعار لهذا الطلب'} as Record<string,string>)[state] || (job.value?.status==='done'?'لا توجد رسالة مجدولة':'الإرسال بعد الموافقة ونجاح الإنجاز')
+}
+async function retryWhatsApp(){
+ busy.value=true
+ try { await $fetch(`/api/unified/jobs/${id}/whatsapp-retry`,{method:'POST',headers:headers()});await refresh() }
+ catch(e:any){errorMessage.value=e?.data?.statusMessage || 'تعذر إعادة إرسال الإشعار'}
+ finally {busy.value=false}
+}
+
 async function remove(){
   if(import.meta.client && !confirm('حذف هذا الطلب؟')) return
   try{ await $fetch(`/api/unified/jobs/${id}/delete`, {method:'DELETE',headers:headers()}); await navigateTo('/unified-procedure') }
@@ -159,6 +170,13 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
       <article><small>وقت الطلب</small><b>{{fmt(job.requestedAt)}}</b></article>
       <article v-if="job.companyCode"><small>رمز الشركة</small><b dir="ltr">{{job.companyCode}}</b></article>
       <article v-if="job.startedAt"><small>بدء التنفيذ</small><b>{{fmt(job.startedAt)}}</b></article>
+    </section>
+
+    <section v-if="job.whatsappNumber" class="card card-v2">
+      <h2>إشعار واتساب</h2><p dir="ltr">{{job.whatsappNumber}}</p><b>{{whatsappLabel()}}</b>
+      <p v-if="job.whatsappDelivery?.errorCode">رمز التشخيص: {{job.whatsappDelivery.errorCode}}</p>
+      <p v-if="job.whatsappDelivery?.status==='failed'">المعاملة مكتملة؛ إعادة إرسال الإشعار لا تنشئ رقم إجراء جديداً.</p>
+      <button v-if="job.whatsappDelivery?.status==='failed'" class="btn primary" :disabled="busy" @click="retryWhatsApp">إعادة إرسال إشعار واتساب فقط</button>
     </section>
 
     <section class="procedure-number-hero" :class="{ready:!!procedureNumber}">

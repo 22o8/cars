@@ -16,6 +16,7 @@ type CloudJob = {
   startedAt?:string
   finishedAt?:string
   unifiedProcedureNo?:string
+  whatsappDelivery?:{status:string}
   whatsappSent?:boolean
   screenshotTaken?:boolean
   screenshotName?:string
@@ -41,6 +42,7 @@ const agentOnline = ref(false)
 const lastSeen = ref('')
 const deviceId = ref('')
 const agentVersion = ref('')
+const whatsappConfigured = ref<boolean | null>(null)
 const errorMessage = ref('')
 const agentState = ref<'checking'|'ONLINE'|'OFFLINE'|'AUTH_ERROR'|'SERVER_ERROR'|'AGENT_ERROR'>('checking')
 const successMessage = ref('')
@@ -147,7 +149,12 @@ async function refreshAgent(){
   }
 }
 
-async function refreshAll(){ await Promise.all([refreshJobs(), refreshAgent()]) }
+async function refreshWhatsApp(){
+ if(!mobilePin.value.trim()){whatsappConfigured.value=null;return}
+ try {const r:any=await $fetch('/api/unified/whatsapp-status',{headers:headers()});whatsappConfigured.value=!!r.configured&&!!r.webhookConfigured}
+ catch {whatsappConfigured.value=null}
+}
+async function refreshAll(){ await Promise.all([refreshJobs(), refreshAgent(), refreshWhatsApp()]) }
 
 async function openDetails(job:CloudJob){
   savePrefs()
@@ -243,6 +250,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
   <div v-if="errorMessage" class="notice danger notice-v2">{{errorMessage}}</div>
   <div v-if="successMessage" class="notice success notice-v2">{{successMessage}}</div>
 
+  <div v-if="whatsappConfigured===false" class="notice notice-v2">ربط واتساب لم يكتمل بعد. تبقى المعاملة محفوظة، وإشعارها ينتظر استكمال إعدادات الإرسال.</div>
   <section class="unified-control-grid">
     <article class="card card-v2 access-card">
       <div class="card-kicker"><span class="step-number">01</span><div><small>الوصول الآمن</small><h2>ربط الهاتف بالجهاز</h2></div></div>
@@ -284,7 +292,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
         <div class="job-status-rail"></div>
         <div class="cloud-job-main"><template v-if="(job.kind==='test' || job.kind==='test_navigation')"><b>اختبار الاتصال بـ ASYCUDA</b><small>تنقل آمن بدون إنشاء رقم حقيقي</small></template><template v-else><b>{{job.companyName || `شركة ${job.companyCode}`}}</b><small><template v-if="(job.vehicleCount || 1) > 1">السيارة {{job.vehicleIndex}} من {{job.vehicleCount}} · </template>رمز الشركة {{job.companyCode}}<template v-if="job.serial"> · المعاملة {{job.serial}}</template></small></template></div>
         <div class="cloud-job-state" :class="statusClass(job.status)">{{statusLabel(job.status)}}</div>
-        <div class="cloud-job-result"><template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')"><small>النتيجة</small><b>نجح الاختبار</b><span>لم يتم إنشاء أي إجراء موحد</span></template><template v-else-if="job.status==='done'"><small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع النتيجة'}}</b><span>{{job.whatsappSent?'تم إرسال الصورة إلى واتساب ✓':'تم حفظ النتيجة داخل النظام'}}</span></template><template v-else-if="job.status==='cancelled'"><small>الحالة</small><b>تم إيقاف الطلب</b></template><template v-else-if="job.status==='failed'"><small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b></template><template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>افتح التفاصيل لمشاهدة الصورة واتخاذ القرار.</span></template><template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template><template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template></div>
+        <div class="cloud-job-result"><template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')"><small>النتيجة</small><b>نجح الاختبار</b><span>لم يتم إنشاء أي إجراء موحد</span></template><template v-else-if="job.status==='done'"><small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع النتيجة'}}</b><span>{{['delivered','read'].includes(job.whatsappDelivery?.status || '')?'وصل إشعار واتساب ✓':job.whatsappDelivery?'تابع حالة واتساب في التفاصيل':'تم حفظ النتيجة داخل النظام'}}</span></template><template v-else-if="job.status==='cancelled'"><small>الحالة</small><b>تم إيقاف الطلب</b></template><template v-else-if="job.status==='failed'"><small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b></template><template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>افتح التفاصيل لمشاهدة الصورة واتخاذ القرار.</span></template><template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template><template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template></div>
         <div class="cloud-job-actions"><button class="btn primary" @click="openDetails(job)">{{job.status==='needs_review'?'عرض واتخاذ القرار':'فتح التفاصيل'}}</button><button v-if="job.status==='pending' || job.status==='processing' || job.status==='needs_review' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button><button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button><button class="btn ghost" @click="deleteJob(job)">حذف</button></div>
       </article>
     </div>

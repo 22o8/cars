@@ -217,7 +217,7 @@ class VisibleFrameRegressionTests(unittest.TestCase):
         text=Path(__file__).with_name('agent.py').read_text(encoding='utf-8-sig')
         self.assertIn('pyautogui.doubleClick', text)
         self.assertIn("clicks=2", text)
-        self.assertIn("VERSION = '9.9.5-single-page-batches'", text)
+        self.assertIn("VERSION = '9.9.6-whatsapp-completion'", text)
 
 
 
@@ -322,4 +322,4 @@ class ExactLoginGuardRegressionTests(unittest.TestCase):
 
     def test_version_exact_login_guard(self):
         text = Path(__file__).with_name('agent.py').read_text(encoding='utf-8')
-        self.assertIn("VERSION = '9.9.5-single-page-batches'", text)
+        self.assertIn("VERSION = '9.9.6-whatsapp-completion'", text)
