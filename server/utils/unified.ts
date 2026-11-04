@@ -21,6 +21,9 @@ export interface UnifiedCloudJob {
   kind: UnifiedJobKind
   status: UnifiedJobStatus
   deviceId: string
+  batchId?: string
+  vehicleCount?: number
+  vehicleIndex?: number
   companyCode: string
   companyName?: string
   whatsappNumber: string

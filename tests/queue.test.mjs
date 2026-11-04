@@ -16,6 +16,22 @@ globalThis.fetch = async (url,options) => {
  const [cmd,key,...args]=JSON.parse(options.body)
  let result=null
  if(cmd==='SET'){store.set(key,String(args[0]));result='OK'}
+ else if(cmd==='EVAL' && key.includes('local cached=')) {
+  const [keyCount,queue,recent,requestKey,raw,fingerprint]=args
+  assert.equal(keyCount,3)
+  const cached=store.get(requestKey)
+  if(cached) result=JSON.parse(cached).fingerprint===fingerprint ? cached : JSON.stringify({conflict:true})
+  else {
+   const jobs=JSON.parse(raw)
+   for(const job of jobs){
+    store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
+    store.set(queue,[job.id,...(store.get(queue)||[])])
+    store.set(recent,[job.id,...(store.get(recent)||[])])
+   }
+   store.set(recent,store.get(recent).slice(0,50))
+   result=JSON.stringify({jobs,fingerprint});store.set(requestKey,result)
+  }
+ }
  else if(cmd==='GET') result=store.get(key)||null
  else if(cmd==='LPUSH'){ const list=store.get(key)||[];list.unshift(...args);store.set(key,list);result=list.length }
  else if(cmd==='LTRIM'){store.set(key,(store.get(key)||[]).slice(Number(args[0]),Number(args[1])+1));result='OK'}
@@ -140,4 +156,36 @@ test('completion recovery cannot bypass approval',async()=>{
  const {job}=await testJob(mobile());job.status='failed';job.statusCode='completion_identity_changed'
  store.set('tarabil:unified:job:'+job.id,JSON.stringify(job))
  await assert.rejects(()=>complete(agent({id:job.id,recoverCompleted:true,ok:true})),{statusCode:409})
+})
+
+
+test('single vehicle defaults to exactly one job',async()=>{
+ const result=await create({...mobile(),body:{companyCode:'123'}})
+ assert.equal(result.jobs.length,1);assert.equal(result.job.vehicleIndex,1)
+ assert.deepEqual(store.get('tarabil:unified:queue:test-device'),[result.job.id])
+})
+test('batch queues exactly N independent vehicles in FIFO order',async()=>{
+ const result=await create({...mobile(),body:{companyCode:'123',vehicleCount:4}})
+ assert.equal(result.jobs.length,4);assert.equal(new Set(result.jobs.map(j=>j.id)).size,4)
+ assert.equal(new Set(result.jobs.map(j=>j.batchId)).size,1)
+ assert.deepEqual(result.jobs.map(j=>j.vehicleIndex),[1,2,3,4])
+ assert.deepEqual(store.get('tarabil:unified:queue:test-device').slice().reverse(),result.jobs.map(j=>j.id))
+ for(const j of result.jobs){assert.equal(j.status,'pending');assert.equal(j.vehicleCount,4)}
+ await cancel({...mobile(),params:{id:result.jobs[0].id}})
+ assert.equal(JSON.parse(store.get('tarabil:unified:job:'+result.jobs[1].id)).status,'pending')
+})
+test('retrying same mobile batch cannot create extra jobs',async()=>{
+ const event={...mobile(),body:{companyCode:'123',vehicleCount:3,requestId:'request-test-123456789'}}
+ const first=await create(event);const second=await create(event)
+ assert.deepEqual(first.jobs,second.jobs)
+ assert.equal(store.get('tarabil:unified:queue:test-device').length,3)
+ await assert.rejects(()=>create({...event,body:{...event.body,vehicleCount:4}}),{statusCode:409})
+ assert.equal(store.get('tarabil:unified:queue:test-device').length,3)
+})
+test('invalid vehicle counts never enqueue',async()=>{
+ for(const vehicleCount of [0,-1,21,1.5,'4',null]){
+  if(vehicleCount===null) continue
+  await assert.rejects(()=>create({...mobile(),body:{companyCode:'123',vehicleCount}}),{statusCode:400})
+ }
+ assert.equal(store.size,0)
 })

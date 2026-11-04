@@ -447,6 +447,7 @@ class Session:
                 node=next(n for n in snapshot['nodes'] if n['id']==action['target'])
                 if norm(node.get('name',''))==norm('رقم الاجراء الموحد'):
                     self.page_open_pending_until=time.monotonic()+8
+                    action['pageOpenRequested'] = True
         elif operation == 'login' and request.get('credentials'):
             # The Iraqi Java 8 login window exposes the username/password fields
             # through JAB, but the green checkmark login button is icon-only and

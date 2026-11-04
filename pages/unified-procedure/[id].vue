@@ -154,6 +154,7 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
 
   <template v-else-if="job">
     <section class="detail-metrics">
+      <article v-if="job.vehicleCount > 1"><small>السيارة ضمن الدفعة</small><b>{{job.vehicleIndex}} من {{job.vehicleCount}}</b></article>
       <article><small>نوع الطلب</small><b>{{['test','test_navigation'].includes(job.kind)?'اختبار آمن':'تنفيذ حقيقي'}}</b></article>
       <article><small>وقت الطلب</small><b>{{fmt(job.requestedAt)}}</b></article>
       <article v-if="job.companyCode"><small>رمز الشركة</small><b dir="ltr">{{job.companyCode}}</b></article>

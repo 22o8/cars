@@ -30,7 +30,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.9.4-verified-completion'
+VERSION = '9.9.5-single-page-batches'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -1192,6 +1192,25 @@ def _click_live_node(node: dict, clicks: int = 1, interval: float = .04) -> bool
     return True
 
 
+def _wait_for_opened_page(timeout=20):
+    """Observe a dispatched open action; never dispatch another on stale MAIN_SCREEN."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        check_cancelled()
+        current = HELPER.call('snapshot')
+        state = current.get('state')
+        if state not in ('MAIN_SCREEN', 'LOADING', None, ''):
+            return True  # Outer navigation handles ready, login and review states.
+        time.sleep(.10)
+    raise NavigationError('page_open_timeout', 'تم إرسال فتح الصفحة مرة واحدة، لكنها لم تظهر خلال المهلة. لم نكرر النقر لتجنب فتح صفحات إضافية.')
+
+
+def _open_page_from_live_node(node):
+    if not _click_live_node(node, clicks=2, interval=.035):
+        return False
+    return _wait_for_opened_page()
+
+
 def _main_screen_live_click_fallback(job_id: str = '') -> bool:
     """Ultra-fast live-bounds navigation for the clean ASYCUDA main screen.
 
@@ -1218,7 +1237,7 @@ def _main_screen_live_click_fallback(job_id: str = '') -> bool:
         raise NavigationError('ambiguous_navigation_target', 'Multiple unified procedure pages match; review required')
     if pages:
         _progress(job_id, 'fast_open_unified_page', 'فتح رقم الإجراء الموحد...')
-        return _click_live_node(pages[0], clicks=2, interval=.035)
+        return _open_page_from_live_node(pages[0])
 
     folders = matches(visible_nodes, folder_names)
     if not folders:
@@ -1250,7 +1269,7 @@ def _main_screen_live_click_fallback(job_id: str = '') -> bool:
             raise NavigationError('ambiguous_navigation_target', 'Multiple unified procedure pages match; review required')
         if pages2:
             _progress(job_id, 'fast_open_unified_page', 'فتح رقم الإجراء الموحد...')
-            return _click_live_node(pages2[0], clicks=2, interval=.035)
+            return _open_page_from_live_node(pages2[0])
     return True
 
 
@@ -1259,6 +1278,8 @@ def _navigate_main_with_jab(job_id=''):
     result={}
     try:
         result = HELPER.call('step')
+        if result.get('pageOpenRequested'):
+            return _wait_for_opened_page()
         if result.get('operation') in ('click','expand'):
             return True
     except NavigationError as exc:
