@@ -30,7 +30,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.9.7-office-results'
+VERSION = '9.9.8-close-asycuda'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -1838,6 +1838,50 @@ def run_navigation_test(job=None):
             'screenshotTaken': True, 'screenshotName': path.name}
 
 
+def close_asycuda(job):
+    import win32gui, win32con, win32process
+    check_cancelled()
+    for _ in range(5):
+        win = find_asycuda_window()
+        if not win:
+            HELPER.close()
+            return {'statusCode':'ASYCUDA_CLOSED','message':'تم إغلاق ASYCUDA. يبقى Agent متصلاً.','screenshotTaken':False}
+        current = HELPER.call('snapshot')
+        if current.get('state') not in ('MAIN_SCREEN', 'LOGIN'):
+            state = current.get('state') or 'UNKNOWN_SCREEN'
+            metadata = _review_metadata(current, state)
+            review_id = _send_review(job['id'], state, metadata)
+            decision = _wait_for_review_decision(job['id'], review_id, state, metadata)
+            if decision != 'dismiss_and_resume':
+                raise NavigationError('close_requires_review', 'يجب إغلاق الصفحة المفتوحة قبل إنهاء ASYCUDA.')
+            continue
+        hwnd = int(win._hWnd)
+        snap = current.get('snapshot') or {}
+        if int(snap.get('mainHwnd') or 0) != hwnd or not win32gui.IsWindow(hwnd):
+            raise NavigationError('close_target_changed', 'تغيرت نافذة ASYCUDA قبل الإغلاق.')
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        if int(snap.get('pid') or 0) != pid or 'asycudaworld production server' not in win32gui.GetWindowText(hwnd).lower():
+            raise NavigationError('close_target_changed', 'هوية نافذة ASYCUDA غير مطابقة.')
+        check_cancelled()
+        log('[CLOSE] sending normal close to verified ASYCUDA window')
+        win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            check_cancelled()
+            if not win32gui.IsWindow(hwnd):
+                if find_asycuda_window():
+                    raise NavigationError('close_other_window_open', 'أُغلقت النافذة المستهدفة لكن توجد نافذة ASYCUDA أخرى.')
+                HELPER.close()
+                log('[CLOSE] ASYCUDA closed and verified')
+                return {'statusCode':'ASYCUDA_CLOSED','message':'تم إغلاق ASYCUDA. يبقى Agent متصلاً.','screenshotTaken':False}
+            time.sleep(.15)
+        # A save/exit prompt may have appeared; return to snapshot and review it.
+        after = HELPER.call('snapshot')
+        if after.get('state') in ('MAIN_SCREEN', 'LOGIN'):
+            raise NavigationError('close_not_confirmed', 'لم تستجب نافذة ASYCUDA لأمر الإغلاق؛ لم نكرر الأمر أو ننهِ العملية بالقوة.')
+    raise NavigationError('close_not_confirmed', 'لم يكتمل إغلاق ASYCUDA؛ لم يتم إنهاء العملية بالقوة.')
+
+
 def run_test_job(job):
     return run_navigation_test(job)
 
@@ -1848,6 +1892,8 @@ def run_job(job):
 
 def _run_job_locked(job):
     kind = job.get('kind')
+    if kind == 'close_asycuda':
+        return close_asycuda(job)
     if kind == 'resume_completion':
         return _complete_created_job(job['checkpoint'])
     if kind in ('test', 'test_navigation'):

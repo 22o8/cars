@@ -189,3 +189,17 @@ test('invalid vehicle counts never enqueue',async()=>{
  }
  assert.equal(store.size,0)
 })
+
+
+test('close command joins queue after preceding jobs and never creates an execution job',async()=>{
+ const close=await load('unified/close.post.ts')
+ const first=(await testJob(mobile())).job
+ const last=(await close(mobile())).job
+ assert.equal(last.kind,'close_asycuda')
+ assert.equal(last.companyCode,'')
+ assert.deepEqual(store.get('tarabil:unified:queue:test-device').slice().reverse(),[first.id,last.id])
+ last.status='processing';store.set('tarabil:unified:job:'+last.id,JSON.stringify(last))
+ await assert.rejects(()=>complete(agent({id:last.id,ok:true,statusCode:'TEST_SUCCESS'})),{statusCode:400})
+ const done=await complete(agent({id:last.id,ok:true,statusCode:'ASYCUDA_CLOSED'}))
+ assert.equal(done.job.status,'done')
+})

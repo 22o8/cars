@@ -1,5 +1,5 @@
 export type UnifiedJobStatus = 'pending' | 'processing' | 'needs_review' | 'cancelling' | 'done' | 'failed' | 'cancelled'
-export type UnifiedJobKind = 'execute' | 'test' | 'test_navigation'
+export type UnifiedJobKind = 'execute' | 'test' | 'test_navigation' | 'close_asycuda'
 export type ReviewDecision = 'dismiss_and_resume' | 'keep_and_stop' | 'resume' | 'stop' | 'finalize_and_complete'
 
 export interface UnifiedReview {

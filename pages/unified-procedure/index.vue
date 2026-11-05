@@ -3,7 +3,7 @@ import type { Transaction } from '~/types'
 
 type CloudJob = {
   id:string
-  kind?:'execute'|'test'|'test_navigation'
+  kind?:'execute'|'test'|'test_navigation'|'close_asycuda'
   status:'pending'|'processing'|'needs_review'|'cancelling'|'done'|'failed'|'cancelled'
   batchId?:string
   vehicleCount?:number
@@ -59,6 +59,7 @@ function statusLabel(s:CloudJob['status']){
   return { pending:'بانتظار الجهاز', processing:'جاري التنفيذ على الأسيكودا', needs_review:'بانتظار قرارك', cancelling:'جاري الإيقاف', done:'مكتمل', failed:'فشل', cancelled:'تم الإيقاف' }[s]
 }
 function jobError(job:CloudJob){
+  if(job.kind==='close_asycuda') return job.error || 'تعذر إغلاق ASYCUDA؛ راجع تفاصيل الطلب'
   if(job.statusCode === 'unknown_popup') return 'ظهرت نافذة غير معروفة داخل ASYCUDA'
   if(job.statusCode === 'manual_intervention_required') return 'تحتاج العملية إلى تدخل يدوي على جهاز المكتب'
   return 'تعذر الوصول إلى شاشة رقم الإجراء الموحد؛ راجع تشخيص الجهاز'
@@ -93,6 +94,17 @@ async function submitCloud(payload?:Partial<CloudJob>){
   finally{ sending.value=false; savePrefs() }
 }
 
+
+async function closeAsycuda(){
+  if(sending.value || !mobilePin.value.trim()) return
+  sending.value=true
+  try {
+    await $fetch('/api/unified/close',{method:'POST',headers:headers()})
+    successMessage.value='تم إرسال أمر الإغلاق؛ ينفّذ بعد الطلبات السابقة في القائمة.'
+    await refreshAll()
+  }catch(e:any){showError(e)}
+  finally{sending.value=false}
+}
 
 async function submitTest(){
   if(!mobilePin.value.trim()) return showError(new Error('أدخل رمز دخول الهاتف أولاً'))
@@ -235,6 +247,11 @@ watch(mobilePin, savePrefs)
   <div v-if="errorMessage" class="notice danger notice-v2">{{errorMessage}}</div>
   <div v-if="successMessage" class="notice success notice-v2">{{successMessage}}</div>
 
+  <section class="card card-v2">
+    <h2>إنهاء العمل على جهاز المكتب</h2>
+    <p>يغلق ASYCUDA بعد الطلبات السابقة. إذا كانت صفحة تحتاج مراجعة، يعرضها لاتخاذ قرارك. يبقى الـAgent متصلاً.</p>
+    <button class="btn danger" :disabled="sending || !mobilePin.trim() || !agentOnline || jobs.some(j=>j.kind==='close_asycuda' && ['pending','processing','needs_review'].includes(j.status))" @click="closeAsycuda">إغلاق ASYCUDA</button>
+  </section>
   <section class="unified-control-grid">
     <article class="card card-v2 access-card">
       <div class="card-kicker"><span class="step-number">01</span><div><small>الوصول الآمن</small><h2>ربط الهاتف بالجهاز</h2></div></div>
@@ -273,9 +290,9 @@ watch(mobilePin, savePrefs)
     <div v-else class="cloud-job-list cloud-job-list-v2">
       <article v-for="job in jobs" :key="job.id" class="cloud-job-row cloud-job-row-v2" :class="`job-${job.status}`">
         <div class="job-status-rail"></div>
-        <div class="cloud-job-main"><template v-if="(job.kind==='test' || job.kind==='test_navigation')"><b>اختبار الاتصال بـ ASYCUDA</b><small>تنقل آمن بدون إنشاء رقم حقيقي</small></template><template v-else><b>{{job.companyName || `شركة ${job.companyCode}`}}</b><small><template v-if="(job.vehicleCount || 1) > 1">السيارة {{job.vehicleIndex}} من {{job.vehicleCount}} · </template>رمز الشركة {{job.companyCode}}<template v-if="job.serial"> · المعاملة {{job.serial}}</template></small></template></div>
+        <div class="cloud-job-main"><template v-if="job.kind==='close_asycuda'"><b>إغلاق ASYCUDA</b><small>إنهاء العمل على جهاز المكتب</small></template><template v-else-if="(job.kind==='test' || job.kind==='test_navigation')"><b>اختبار الاتصال بـ ASYCUDA</b><small>تنقل آمن بدون إنشاء رقم حقيقي</small></template><template v-else><b>{{job.companyName || `شركة ${job.companyCode}`}}</b><small><template v-if="(job.vehicleCount || 1) > 1">السيارة {{job.vehicleIndex}} من {{job.vehicleCount}} · </template>رمز الشركة {{job.companyCode}}<template v-if="job.serial"> · المعاملة {{job.serial}}</template></small></template></div>
         <div class="cloud-job-state" :class="statusClass(job.status)">{{statusLabel(job.status)}}</div>
-        <div class="cloud-job-result"><template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')"><small>النتيجة</small><b>نجح الاختبار</b><span>لم يتم إنشاء أي إجراء موحد</span></template><template v-else-if="job.status==='done'"><small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع النتيجة'}}</b><span>تم حفظ الرقم والصورة داخل تفاصيل الطلب</span></template><template v-else-if="job.status==='cancelled'"><small>الحالة</small><b>تم إيقاف الطلب</b></template><template v-else-if="job.status==='failed'"><small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b></template><template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>افتح التفاصيل لمشاهدة الصورة واتخاذ القرار.</span></template><template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template><template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template></div>
+        <div class="cloud-job-result"><template v-if="job.status==='done' && job.kind==='close_asycuda'"><b>تم إغلاق ASYCUDA</b><span>الـAgent يبقى متصلاً</span></template><template v-else-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')"><small>النتيجة</small><b>نجح الاختبار</b><span>لم يتم إنشاء أي إجراء موحد</span></template><template v-else-if="job.status==='done'"><small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع النتيجة'}}</b><span>تم حفظ الرقم والصورة داخل تفاصيل الطلب</span></template><template v-else-if="job.status==='cancelled'"><small>الحالة</small><b>تم إيقاف الطلب</b></template><template v-else-if="job.status==='failed'"><small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b></template><template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>افتح التفاصيل لمشاهدة الصورة واتخاذ القرار.</span></template><template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template><template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template></div>
         <div class="cloud-job-actions"><button class="btn primary" @click="openDetails(job)">{{job.status==='needs_review'?'عرض واتخاذ القرار':'فتح التفاصيل'}}</button><button v-if="job.status==='pending' || job.status==='processing' || job.status==='needs_review' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button><button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button><button class="btn ghost" @click="deleteJob(job)">حذف</button></div>
       </article>
     </div>

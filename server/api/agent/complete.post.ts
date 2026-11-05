@@ -39,6 +39,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'navigation proof missing' })
   }
 
+  if (!cancelled && body?.ok && job.kind === 'close_asycuda' && statusCode !== 'ASYCUDA_CLOSED') throw createError({statusCode:400,statusMessage:'close confirmation missing'})
+
   job.statusCode = cancelled ? 'cancelled_by_user' : statusCode
   job.message = cancelled ? 'تم إيقاف الطلب بواسطة المستخدم.' : String(body?.message || '').slice(0, 300)
   job.status = cancelled ? 'cancelled' : (body?.ok === true ? 'done' : 'failed')

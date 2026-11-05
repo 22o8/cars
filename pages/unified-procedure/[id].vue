@@ -155,7 +155,7 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
   <template v-else-if="job">
     <section class="detail-metrics">
       <article v-if="job.vehicleCount > 1"><small>السيارة ضمن الدفعة</small><b>{{job.vehicleIndex}} من {{job.vehicleCount}}</b></article>
-      <article><small>نوع الطلب</small><b>{{['test','test_navigation'].includes(job.kind)?'اختبار آمن':'تنفيذ حقيقي'}}</b></article>
+      <article><small>نوع الطلب</small><b>{{job.kind==='close_asycuda'?'إغلاق ASYCUDA':['test','test_navigation'].includes(job.kind)?'اختبار آمن':'تنفيذ حقيقي'}}</b></article>
       <article><small>وقت الطلب</small><b>{{fmt(job.requestedAt)}}</b></article>
       <article v-if="job.companyCode"><small>رمز الشركة</small><b dir="ltr">{{job.companyCode}}</b></article>
       <article v-if="job.startedAt"><small>بدء التنفيذ</small><b>{{fmt(job.startedAt)}}</b></article>
@@ -163,7 +163,7 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
 
 
 
-    <section class="procedure-number-hero" :class="{ready:!!procedureNumber}">
+    <section v-if="job.kind!=='close_asycuda'" class="procedure-number-hero" :class="{ready:!!procedureNumber}">
       <div><span class="eyebrow">النتيجة الأساسية</span><h2>رقم الإجراء الموحد</h2><p v-if="procedureNumber">تم استلام الرقم من جهاز ASYCUDA وأصبح جاهزاً للنسخ.</p><p v-else>الرقم سيظهر هنا فور وصوله من ASYCUDA.</p></div>
       <div v-if="procedureNumber" class="procedure-number-box"><input id="procedure-number" ref="procedureNumberInput" :value="procedureNumber" readonly dir="ltr" spellcheck="false" @focus="($event.target as HTMLInputElement).select()"><button type="button" class="btn primary" :disabled="copyingNumber" @click="copyProcedureNumber">{{copyingNumber ? 'جاري النسخ…' : 'نسخ الرقم'}}</button><small role="status" aria-live="polite">{{copyStatus || 'اضغط لنسخ الرقم للحافظة'}}</small></div><div v-else class="number-waiting"><span class="waiting-ring"></span><b>بانتظار الرقم</b></div>
     </section>
@@ -179,7 +179,7 @@ onBeforeUnmount(()=>{ if(timer) clearInterval(timer); if(reviewScreenshotUrl.val
       <p class="review-message">{{job.review.message}}</p>
       <div v-if="job.review.metadata?.target?.name || job.review.metadata?.target?.windowTitle" class="target-info"><span>النافذة المستهدفة</span><b>{{job.review.metadata?.target?.name || job.review.metadata?.target?.windowTitle}}</b></div>
       <div v-if="reviewScreenshotUrl" class="shot-wrap shot-wrap-v2"><img :src="reviewScreenshotUrl" alt="لقطة شاشة ASYCUDA"></div><div v-else class="shot-empty">لا توجد صورة متاحة لهذه الحالة.</div>
-      <div v-if="job.status==='needs_review'" class="decision-actions decision-actions-v2"><template v-if="job.review.state==='PROCEDURE_CREATED_WAITING_COMPLETION'"><button class="btn primary decision-primary" :disabled="busy" @click="decide('finalize_and_complete')">نعم، أنجز رقم الإجراء</button><button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف وإبقاء الصفحة مفتوحة</button></template><template v-else><button class="btn primary decision-primary" :disabled="busy" @click="decide('dismiss_and_resume')">إغلاق الصفحة والمتابعة إلى رقم الإجراء</button><button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف وإبقاء الشاشة كما هي</button></template></div>
+      <div v-if="job.status==='needs_review'" class="decision-actions decision-actions-v2"><template v-if="job.review.state==='PROCEDURE_CREATED_WAITING_COMPLETION'"><button class="btn primary decision-primary" :disabled="busy" @click="decide('finalize_and_complete')">نعم، أنجز رقم الإجراء</button><button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف وإبقاء الصفحة مفتوحة</button></template><template v-else><button class="btn primary decision-primary" :disabled="busy" @click="decide('dismiss_and_resume')">{{job.kind==='close_asycuda'?'إغلاق الصفحة والمتابعة إلى إغلاق ASYCUDA':'إغلاق الصفحة والمتابعة إلى رقم الإجراء'}}</button><button class="btn danger" :disabled="busy" @click="decide('keep_and_stop')">إيقاف وإبقاء الشاشة كما هي</button></template></div>
     </section>
 
     <section v-if="job.screenshotAvailable" class="card card-v2 review-card"><div class="review-head"><div><span class="eyebrow">النتيجة</span><h2>صورة نتيجة الطلب</h2><p>الصورة النهائية المرتبطة بهذا الطلب</p></div></div><div v-if="finalScreenshotUrl" class="shot-wrap shot-wrap-v2"><img :src="finalScreenshotUrl" alt="نتيجة ASYCUDA"></div></section>
