@@ -26,14 +26,11 @@ export interface UnifiedCloudJob {
   vehicleIndex?: number
   companyCode: string
   companyName?: string
-  whatsappNumber: string
   serial?: string
   requestedAt: string
   startedAt?: string
   finishedAt?: string
   unifiedProcedureNo?: string
-  whatsappDelivery?: import('./whatsapp').WhatsAppDelivery | null
-  whatsappSent?: boolean
   screenshotTaken?: boolean
   screenshotName?: string
   screenshotMime?: string

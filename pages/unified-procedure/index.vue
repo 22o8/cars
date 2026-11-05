@@ -10,14 +10,11 @@ type CloudJob = {
   vehicleIndex?:number
   companyCode:string
   companyName?:string
-  whatsappNumber:string
   serial?:string
   requestedAt:string
   startedAt?:string
   finishedAt?:string
   unifiedProcedureNo?:string
-  whatsappDelivery?:{status:string}
-  whatsappSent?:boolean
   screenshotTaken?:boolean
   screenshotName?:string
   error?:string
@@ -34,7 +31,6 @@ const companyCode = ref('')
 const vehicleCount = ref(1)
 let pendingSubmission: { fingerprint:string; requestId:string } | null = null
 const companyName = ref('')
-const whatsappNumber = ref('')
 const sending = ref(false)
 const jobs = ref<CloudJob[]>([])
 const loadingJobs = ref(false)
@@ -42,7 +38,6 @@ const agentOnline = ref(false)
 const lastSeen = ref('')
 const deviceId = ref('')
 const agentVersion = ref('')
-const whatsappConfigured = ref<boolean | null>(null)
 const errorMessage = ref('')
 const agentState = ref<'checking'|'ONLINE'|'OFFLINE'|'AUTH_ERROR'|'SERVER_ERROR'|'AGENT_ERROR'>('checking')
 const successMessage = ref('')
@@ -51,12 +46,10 @@ let timer:any = null
 const localQueue = computed(() => transactions.value.filter(t => currentStage(t)?.key === 'unified'))
 
 function headers(){ return { 'X-Tarabil-Mobile-Pin': mobilePin.value.trim() } }
-function cleanPhone(v:string){ return v.replace(/\D/g,'') }
 function savePrefs(){
   if(!import.meta.client) return
   sessionStorage.setItem('tarabil.mobile.pin', mobilePin.value)
   localStorage.removeItem('tarabil.mobile.pin')
-  localStorage.setItem('tarabil.mobile.whatsapp', whatsappNumber.value)
 }
 function showError(e:any){
   errorMessage.value = e?.data?.statusMessage || 'تعذر تنفيذ الطلب؛ تحقق من رمز الدخول والاتصال'
@@ -77,11 +70,10 @@ async function submitCloud(payload?:Partial<CloudJob>){
   if(sending.value) return
   if(!mobilePin.value.trim()) return showError(new Error('أدخل رمز دخول الهاتف أولاً'))
   const code = String(payload?.companyCode || companyCode.value).trim()
-  const phone = cleanPhone(String(payload?.whatsappNumber || whatsappNumber.value))
   if(!code) return showError(new Error('أدخل رمز الشركة'))
 
   const count = payload ? 1 : vehicleCount.value
-  const data = { companyCode:code, companyName:String(payload?.companyName || companyName.value || ''), whatsappNumber:phone, serial:String(payload?.serial || ''), vehicleCount:count }
+  const data = { companyCode:code, companyName:String(payload?.companyName || companyName.value || ''), serial:String(payload?.serial || ''), vehicleCount:count }
   const fingerprint = JSON.stringify(data)
   if(!pendingSubmission || pendingSubmission.fingerprint !== fingerprint) pendingSubmission = { fingerprint, requestId:crypto.randomUUID() }
   sending.value = true
@@ -117,8 +109,7 @@ async function submitTest(){
 
 async function submitTransaction(t:Transaction){
   if(!t.companyCode?.trim()) return showError(new Error('رمز الشركة غير مضاف لهذه المعاملة'))
-  const phone = cleanPhone(whatsappNumber.value)
-  await submitCloud({ companyCode:t.companyCode, companyName:t.companyName, whatsappNumber:phone, serial:t.serial })
+  await submitCloud({ companyCode:t.companyCode, companyName:t.companyName, serial:t.serial })
 }
 
 async function refreshJobs(){
@@ -149,12 +140,7 @@ async function refreshAgent(){
   }
 }
 
-async function refreshWhatsApp(){
- if(!mobilePin.value.trim()){whatsappConfigured.value=null;return}
- try {const r:any=await $fetch('/api/unified/whatsapp-status',{headers:headers()});whatsappConfigured.value=!!r.configured&&!!r.webhookConfigured}
- catch {whatsappConfigured.value=null}
-}
-async function refreshAll(){ await Promise.all([refreshJobs(), refreshAgent(), refreshWhatsApp()]) }
+async function refreshAll(){ await Promise.all([refreshJobs(), refreshAgent()]) }
 
 async function openDetails(job:CloudJob){
   savePrefs()
@@ -231,12 +217,11 @@ function chooseCompany(id:string){
 onMounted(async()=>{
   mobilePin.value = sessionStorage.getItem('tarabil.mobile.pin') || ''
   localStorage.removeItem('tarabil.mobile.pin')
-  whatsappNumber.value = localStorage.getItem('tarabil.mobile.whatsapp') || ''
   await refreshAll()
   timer = setInterval(refreshAll, 3500)
 })
 onBeforeUnmount(()=>{ if(timer) clearInterval(timer) })
-watch([mobilePin, whatsappNumber], savePrefs)
+watch(mobilePin, savePrefs)
 </script>
 
 <template>
@@ -250,7 +235,6 @@ watch([mobilePin, whatsappNumber], savePrefs)
   <div v-if="errorMessage" class="notice danger notice-v2">{{errorMessage}}</div>
   <div v-if="successMessage" class="notice success notice-v2">{{successMessage}}</div>
 
-  <div v-if="whatsappConfigured===false" class="notice notice-v2">ربط واتساب لم يكتمل بعد. تبقى المعاملة محفوظة، وإشعارها ينتظر استكمال إعدادات الإرسال.</div>
   <section class="unified-control-grid">
     <article class="card card-v2 access-card">
       <div class="card-kicker"><span class="step-number">01</span><div><small>الوصول الآمن</small><h2>ربط الهاتف بالجهاز</h2></div></div>
@@ -272,7 +256,6 @@ watch([mobilePin, whatsappNumber], savePrefs)
       <div class="field"><label>شركة محفوظة</label><select class="input input-lg" @change="chooseCompany(($event.target as HTMLSelectElement).value)"><option value="">اختر الشركة</option><option v-for="c in companies" :key="c.id" :value="c.id">{{c.name}}</option></select></div>
       <div class="field"><label>عدد السيارات</label><select v-model.number="vehicleCount" class="input input-lg" :disabled="sending"><option v-for="n in 20" :key="n" :value="n">{{n === 1 ? 'سيارة واحدة' : `${n} سيارات`}}</option></select><small>صفحة ورقم وصورة لكل سيارة بالتتابع، مع موافقة إنجاز لكل رقم.</small></div>
       <div class="field primary-field"><label>رمز الشركة</label><input v-model="companyCode" class="input input-lg code-input" inputmode="numeric" placeholder="7400XXXX"></div>
-      <div class="field"><label>رقم واتساب <span>اختياري</span></label><input v-model="whatsappNumber" class="input input-lg" inputmode="tel" placeholder="9647XXXXXXXXX"></div>
       <div class="field optional-company"><label>اسم الشركة <span>اختياري</span></label><input v-model="companyName" class="input input-lg" placeholder="اسم الشركة"></div>
       <button class="btn primary btn-execute" :disabled="sending || !companyCode.trim() || !mobilePin.trim()" @click="submitCloud()"><span>{{sending?'جاري الإرسال...':`إنشاء ${vehicleCount} رقم إجراء`}}</span><small v-if="!sending">إرسال إلى جهاز ASYCUDA ←</small></button>
     </div>
@@ -292,7 +275,7 @@ watch([mobilePin, whatsappNumber], savePrefs)
         <div class="job-status-rail"></div>
         <div class="cloud-job-main"><template v-if="(job.kind==='test' || job.kind==='test_navigation')"><b>اختبار الاتصال بـ ASYCUDA</b><small>تنقل آمن بدون إنشاء رقم حقيقي</small></template><template v-else><b>{{job.companyName || `شركة ${job.companyCode}`}}</b><small><template v-if="(job.vehicleCount || 1) > 1">السيارة {{job.vehicleIndex}} من {{job.vehicleCount}} · </template>رمز الشركة {{job.companyCode}}<template v-if="job.serial"> · المعاملة {{job.serial}}</template></small></template></div>
         <div class="cloud-job-state" :class="statusClass(job.status)">{{statusLabel(job.status)}}</div>
-        <div class="cloud-job-result"><template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')"><small>النتيجة</small><b>نجح الاختبار</b><span>لم يتم إنشاء أي إجراء موحد</span></template><template v-else-if="job.status==='done'"><small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع النتيجة'}}</b><span>{{['delivered','read'].includes(job.whatsappDelivery?.status || '')?'وصل إشعار واتساب ✓':job.whatsappDelivery?'تابع حالة واتساب في التفاصيل':'تم حفظ النتيجة داخل النظام'}}</span></template><template v-else-if="job.status==='cancelled'"><small>الحالة</small><b>تم إيقاف الطلب</b></template><template v-else-if="job.status==='failed'"><small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b></template><template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>افتح التفاصيل لمشاهدة الصورة واتخاذ القرار.</span></template><template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template><template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template></div>
+        <div class="cloud-job-result"><template v-if="job.status==='done' && (job.kind==='test' || job.kind==='test_navigation')"><small>النتيجة</small><b>نجح الاختبار</b><span>لم يتم إنشاء أي إجراء موحد</span></template><template v-else-if="job.status==='done'"><small>رقم الإجراء</small><b>{{job.unifiedProcedureNo || 'تم التنفيذ — راجع النتيجة'}}</b><span>تم حفظ الرقم والصورة داخل تفاصيل الطلب</span></template><template v-else-if="job.status==='cancelled'"><small>الحالة</small><b>تم إيقاف الطلب</b></template><template v-else-if="job.status==='failed'"><small>سبب الفشل</small><b class="danger-text">{{jobError(job)}}</b></template><template v-else-if="job.status==='needs_review'"><small>تحتاج قرارك</small><b>{{job.review?.title || 'ظهرت شاشة تحتاج مراجعة'}}</b><span>افتح التفاصيل لمشاهدة الصورة واتخاذ القرار.</span></template><template v-else-if="job.status==='cancelling'"><small>الحالة</small><span>بانتظار توقف الـAgent بأمان...</span></template><template v-else><small>وقت الطلب</small><span>{{fmt(job.requestedAt)}}</span></template></div>
         <div class="cloud-job-actions"><button class="btn primary" @click="openDetails(job)">{{job.status==='needs_review'?'عرض واتخاذ القرار':'فتح التفاصيل'}}</button><button v-if="job.status==='pending' || job.status==='processing' || job.status==='needs_review' || job.status==='cancelling'" class="btn danger" :disabled="job.status==='cancelling'" @click="cancelJob(job)">{{job.status==='cancelling'?'جاري الإيقاف...':'إيقاف'}}</button><button v-if="job.status==='failed' && (job.kind==='test' || job.kind==='test_navigation')" class="btn ghost" @click="retry(job)">إعادة المحاولة</button><button class="btn ghost" @click="deleteJob(job)">حذف</button></div>
       </article>
     </div>

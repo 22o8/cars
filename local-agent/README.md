@@ -18,7 +18,7 @@ The existing 64-bit agent polls the same Vercel/Upstash queue. It uses a persist
 - The unread-mail question is dismissed only through a unique enabled No button inside that exact known alert.
 - Save/discard dialogs require manual intervention. No document-closing actions exist.
 - Readiness requires an active unified internal frame, a company label and an enabled field; a navigator label is insufficient. This fingerprint still needs validation against the live Iraqi client.
-- Screenshots remain local and are cropped to the ASYCUDA window. They are not uploaded or sent to WhatsApp during tests.
+- Screenshots remain local and are cropped to the ASYCUDA window. They are not uploaded during tests.
 - Credentials are read locally from Windows Credential Manager. They never go to Vercel or logs. The helper receives login credentials only over inherited pipes and does not return field contents.
 - Login selectors and Java warning identity checks intentionally fail closed when unrecognized.
 

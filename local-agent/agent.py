@@ -30,7 +30,7 @@ BASE = Path(__file__).resolve().parent
 CONFIG_PATH = BASE / 'config.json'
 SCREENSHOTS = BASE / 'screenshots'
 SERVICE = 'TarabilCustomsAgent'
-VERSION = '9.9.6-whatsapp-completion'
+VERSION = '9.9.7-office-results'
 INSTANCE_LOCK_PORT = 47621
 AGENT_STATE = 'ONLINE'
 CURRENT_CANCEL_EVENT = None
@@ -1801,7 +1801,6 @@ def _complete_created_job(checkpoint):
         'statusCode':'PROCEDURE_COMPLETED',
         'message':'تم إنشاء رقم الإجراء الموحد وتأكيد إنجازه بنجاح.',
         'unifiedProcedureNo':procedure_no,
-        'whatsappSent':False,
         'screenshotTaken':True,
         'screenshotName':final_path.name,
     }
@@ -1822,26 +1821,6 @@ def take_screenshot(label: str):
     return path
 
 
-def whatsapp_dispatch_once():
-    # The server authorizes only completed jobs with matching operator approval.
-    # This endpoint can never create or interact with an ASYCUDA procedure.
-    response = requests.post(api_url('/api/agent/whatsapp/dispatch'), headers=cloud_headers(), timeout=45)
-    if response.status_code == 404:
-        return  # Compatible with the previously deployed website until upgraded.
-    response.raise_for_status()
-    if response.json().get('accepted'):
-        log('[WHATSAPP] message accepted; awaiting delivery webhook')
-
-
-def whatsapp_worker(stop):
-    while not stop.wait(10):
-        try:
-            whatsapp_dispatch_once()
-        except Exception:
-            # Delivery has its own durable server state and never fails a UI job.
-            log('[WHATSAPP] dispatch unavailable; procedure state unchanged')
-
-
 def run_navigation_test(job=None):
     check_cancelled()
     job_id = (job or {}).get('id') or ''
@@ -1855,7 +1834,7 @@ def run_navigation_test(job=None):
     save_ui_state(HELPER.call('snapshot'), job_id, 'navigation_test', 'UNIFIED_PROCEDURE_OPEN')
     return {'statusCode': 'TEST_SUCCESS',
             'message': 'تم الوصول إلى شاشة رقم الإجراء الموحد بنجاح ولم يتم إنشاء أي إجراء.',
-            'unifiedProcedureNo': '', 'whatsappSent': False,
+            'unifiedProcedureNo': '',
             'screenshotTaken': True, 'screenshotName': path.name}
 
 
@@ -1899,7 +1878,6 @@ def complete_job(job_id: str, ok: bool, result=None, error=''):
     if result:
         payload.update({
             'unifiedProcedureNo': result.get('unifiedProcedureNo', ''),
-            'whatsappSent': bool(result.get('whatsappSent')),
             'screenshotTaken': bool(result.get('screenshotTaken')),
             'screenshotName': result.get('screenshotName', ''),
             'statusCode': result.get('statusCode', ''),
@@ -2014,7 +1992,6 @@ def main():
     global AGENT_STATE, CURRENT_CANCEL_EVENT
     _instance_lock = acquire_instance_lock()
     stop = threading.Event()
-    threading.Thread(target=whatsapp_worker, args=(stop,), daemon=True).start()
     threading.Thread(target=heartbeat, args=(stop,), daemon=True).start()
     threading.Thread(target=security_warning_guard, args=(stop,), daemon=True).start()
     threading.Thread(target=login_window_guard, args=(stop,), daemon=True).start()

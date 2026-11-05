@@ -2,7 +2,7 @@ ASYCUDA Unified Procedure - fixed test button build
 
 Fixed:
 1. "للتجربة" is a separate safe job type.
-2. Test job requires only mobile PIN; no company code or WhatsApp number.
+2. Test job requires only mobile PIN; no company code.
 3. Test path opens/focuses ASYCUDA, navigates to Unified Procedure, takes a screenshot, and stops.
 4. Test path has no call to create_unified() and never clicks submit_button.
 5. Windows charmap/Unicode console crash fixed using UTF-8 and ASCII-safe agent logs/file names.

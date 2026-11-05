@@ -1,7 +1,6 @@
 import process from 'node:process'
 export default defineNuxtConfig({
   ssr: false,
-  nitro: { vercel: { functions: { maxDuration: 60 } } },
   devtools: { enabled: false },
   app: {
     head: {
@@ -25,13 +24,6 @@ export default defineNuxtConfig({
     agentDeviceId: process.env.TARABIL_AGENT_DEVICE_ID || 'asycuda-office-1',
     agentDeviceToken: process.env.TARABIL_AGENT_DEVICE_TOKEN || '',
     mobilePin: process.env.TARABIL_MOBILE_PIN || '',
-    whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
-    whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
-    whatsappGraphVersion: process.env.WHATSAPP_GRAPH_VERSION || '',
-    whatsappTemplateName: process.env.WHATSAPP_TEMPLATE_NAME || 'tarabil_procedure_completed',
-    whatsappTemplateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'ar',
-    whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
-    whatsappAppSecret: process.env.WHATSAPP_APP_SECRET || ''
   },
   css: ['~/assets/css/main.css'],
   compatibilityDate: '2024-11-01'

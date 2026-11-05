@@ -59,9 +59,9 @@ const reviewDecision=await load('unified/jobs/[id]/review-decision.post.ts')
 const mobile=()=>({headers:{'x-tarabil-mobile-pin':config.mobilePin}})
 const agent=body=>({headers:{authorization:'Bearer '+config.agentDeviceToken,'x-tarabil-device-id':config.agentDeviceId},body})
 beforeEach(()=>store.clear())
-test('test job requires no company or WhatsApp',async()=>{
+test('test job requires no company',async()=>{
  const {job}=await testJob(mobile())
- assert.equal(job.kind,'test_navigation');assert.equal(job.companyCode,'');assert.equal(job.whatsappNumber,'')
+ assert.equal(job.kind,'test_navigation');assert.equal(job.companyCode,'')
  assert.deepEqual(store.get('tarabil:unified:queue:test-device'),[job.id])
 })
 test('invalid PIN does not enqueue',async()=>{

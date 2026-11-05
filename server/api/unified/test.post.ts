@@ -14,7 +14,6 @@ export default defineEventHandler(async (event) => {
     deviceId: String(cfg.agentDeviceId || 'asycuda-office-1'),
     companyCode: '',
     companyName: 'اختبار الاتصال',
-    whatsappNumber: '',
     serial: '',
     requestedAt: new Date().toISOString(),
     attempts: 0

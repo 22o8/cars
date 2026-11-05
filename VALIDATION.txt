@@ -6,7 +6,7 @@ Completed in packaging environment:
 - Navigation/intelligence unit tests: 16/16 PASS
 - Static safety check: real unified-procedure creation remains disabled
 - Static safety check: no coordinate-based navigation usage outside legacy/config archive
-- Source secret scan: no Vercel/Redis/WhatsApp/ASYCUDA secret values found in source
+- Source secret scan: no Vercel/Redis/ASYCUDA secret values found in source
 
 Not re-run in packaging environment:
 - npm ci / Nuxt typecheck / Nuxt build, because npm dependencies were not cached and this environment has no package-registry network access.

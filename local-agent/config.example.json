@@ -60,11 +60,6 @@
       "Unified Procedure Number"
     ]
   },
-  "whatsapp": {
-    "enabled": false,
-    "graph_version": "",
-    "caption": "رقم الإجراء الموحد: {procedureNo} - {serial} - {companyName}"
-  },
   "intelligence": {
     "mode": "hybrid-local",
     "screen_memory": true,

@@ -43,14 +43,13 @@ export default defineEventHandler(async (event) => {
     deviceId: String(cfg.agentDeviceId || 'asycuda-office-1'),
     companyCode, batchId, vehicleCount, vehicleIndex,
     companyName: String(body?.companyName || '').slice(0, 180),
-    whatsappNumber: String(body?.whatsappNumber || '').replace(/\D/g, '').slice(0, 24),
     serial: String(body?.serial || '').slice(0, 120),
     requestedAt: new Date().toISOString(), attempts: 0
   }
   jobs.push(job)
   }
   const first = jobs[0]!
-  const fingerprint = JSON.stringify([first.companyCode, first.companyName, first.whatsappNumber, first.serial, vehicleCount])
+  const fingerprint = JSON.stringify([first.companyCode, first.companyName, first.serial, vehicleCount])
   const raw = await redisCommand(event, ['EVAL', publishBatch, 3, queueKey(first.deviceId), recentKey,
     `tarabil:unified:request:${first.deviceId}:${requestId}`, JSON.stringify(jobs), fingerprint])
   const result = JSON.parse(String(raw)) as { conflict?: boolean; jobs: UnifiedCloudJob[] }

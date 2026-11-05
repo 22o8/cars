@@ -27,16 +27,6 @@ if not username or not password:
 keyring.set_password(SERVICE, 'asycuda_username', username)
 keyring.set_password(SERVICE, 'asycuda_password', password)
 
-wa = input('Enable WhatsApp Cloud API now? (y/n) [n]: ').strip().lower() == 'y'
-cfg.setdefault('whatsapp', {})['enabled'] = bool(wa)
-if wa:
-    token = getpass.getpass('WhatsApp Access Token: ')
-    phone_id = input('WhatsApp Phone Number ID: ').strip()
-    graph_version = input('Graph API version (example vXX.X): ').strip()
-    keyring.set_password(SERVICE, 'whatsapp_access_token', token)
-    keyring.set_password(SERVICE, 'whatsapp_phone_number_id', phone_id)
-    cfg['whatsapp']['graph_version'] = graph_version
-
 CONFIG.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
 print('Configuration saved successfully.')
 print('Next: run install-autostart.bat, then restart-agent.bat.')

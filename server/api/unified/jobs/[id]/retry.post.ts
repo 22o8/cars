@@ -21,7 +21,6 @@ export default defineEventHandler(async (event) => {
   job.startedAt = undefined
   job.finishedAt = undefined
   job.unifiedProcedureNo = ''
-  job.whatsappSent = false
   if (job.review) job.reviewHistory = [...(job.reviewHistory || []), job.review].slice(-12)
   job.review = undefined
   job.cancelRequested = false
